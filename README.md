@@ -4,8 +4,10 @@ A free VPN extension for Chrome, Edge, Brave, Vivaldi and other Chromium browser
 
 **Zero setup:** install the extension, press the power button, done. No accounts, no server lists to import, nothing to install on your computer.
 
-- **Free servers found automatically.** On install and every 30 minutes, OpenGate downloads several public free proxy lists ([Proxifly](https://github.com/proxifly/free-proxy-list), [ProxyScrape](https://proxyscrape.com/free-proxy-list), [Geonode](https://geonode.com/free-proxy-list), [monosans](https://github.com/monosans/proxy-list), [TheSpeedX](https://github.com/TheSpeedX/PROXY-List)). It tests every server inside your browser and keeps only the fastest ones that can open secure (HTTPS) sites.
-- **Fast with automatic failover.** Auto mode uses the fastest server and keeps backups ready. If one stops answering, the next one takes over right away, and a fresh list is fetched when the backups run low.
+- **Free servers found automatically.** On install and every 30 minutes, OpenGate downloads 18 public free proxy lists (jetkai, monosans, roosterkid, vakhov, prxchk, Proxifly, ProxyScrape, Geonode and more). Proxies that several lists agree on are tested first.
+- **Only servers that really work.** Each one must load a Cloudflare test page over HTTPS with a valid certificate. That proves it works for secure sites and doesn't tamper with traffic, and it shows the server's real country.
+- **Fast, with automatic failover.** You're connected as soon as the first working servers are found, usually in 10–20 seconds. Auto mode uses the fastest server and keeps backups ready. While you're connected, the servers in use are re-checked every 2 minutes, and dead ones are replaced without interrupting you.
+- **Choose a country.** Use the Location menu on the Home screen, or keep "Fastest".
 - **Targeted website mode.** Choose **"Only my site list"** and only those sites (and their subdomains) go through the VPN, so only they see a different IP. Everything else keeps your normal, fast connection. There are one-click presets for YouTube, Instagram, X, Discord, Telegram Web, ChatGPT and more, plus an "Add the site in this tab" button.
 - **Full mode.** Choose **"All sites"** to send all browser traffic through the VPN.
 - **No paid plans, ever.** No accounts, sign-ups, ads or tracking. Your settings stay in your browser.
@@ -16,7 +18,7 @@ A free VPN extension for Chrome, Edge, Brave, Vivaldi and other Chromium browser
 2. Open `chrome://extensions` (Edge: `edge://extensions`).
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and select the `extension` folder.
-5. Click the OpenGate icon and press the power button. The first time, it takes about 30 seconds to find fast free servers.
+5. Click the OpenGate icon and press the power button. The first time, it takes about 10–20 seconds to find working free servers.
 6. Press **Check my IP** to confirm it works.
 
 ## How it works
@@ -25,7 +27,11 @@ A free VPN extension for Chrome, Edge, Brave, Vivaldi and other Chromium browser
 browser ──(only your sites, or everything)──► fastest free server (+ backups) ──► website
 ```
 
-The extension sets your browser's proxy rules. To test hundreds of servers quickly, it briefly sends harmless test requests (to `example.com`-type addresses) through each server and times them. Your real browsing is never sent through a server that is still being tested.
+The extension sets your browser's proxy rules. To test hundreds of servers quickly, it sends test requests to Cloudflare test addresses through each server and times them. Your real browsing is never sent through a server that is still being tested.
+
+### Why not VPN Gate and similar sites?
+
+[VPN Gate](https://www.vpngate.net/) and similar free VPN sites hand out **OpenVPN / L2TP / SSTP / WireGuard** servers. Browsers can't connect to those, and Chrome extensions aren't allowed to run VPN software, so no browser extension can use them. Use the official VPN Gate client (or OpenVPN) for those. This extension uses free **SOCKS5 and HTTP proxies**, which is what a browser can use directly.
 
 ## Optional: your own servers (advanced)
 

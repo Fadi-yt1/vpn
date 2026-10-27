@@ -1,7 +1,7 @@
 import { parseSubscription, hashId } from './lib/links.js';
 import { buildConfig, toOutbound } from './lib/xray.js';
 import { buildPac, proxyString, normalizeSite, IP_CHECK_HOST } from './lib/pac.js';
-import { fetchFreeProxies, addCountries } from './lib/freeproxies.js';
+import { fetchFreeProxies, addCountries, flagFromCode, countryName } from './lib/freeproxies.js';
 
 const HOST = 'com.opengate.vpn';
 const HELPER_MISSING = 'Your own VLESS/Trojan servers need the optional helper (Settings). Free servers work without it — pick "Auto".';
@@ -107,9 +107,9 @@ async function removeSource(id) {
   }
 }
 
-// ---------- testing free proxies inside the browser ----------
+// ---------- testing proxies inside the browser ----------
 // We temporarily install a PAC script that sends each test request through a
-// different proxy, then run many requests in parallel and time them.
+// different proxy, run many requests in parallel and time them.
 async function setTestPac(tests) {
   const prefs = await getPrefs();
   const { activeProxy } = await get('activeProxy');
@@ -119,7 +119,7 @@ async function setTestPac(tests) {
     proxy: on ? activeProxy : 'DIRECT', enabled: !!on,
   });
   await chrome.proxy.settings.set({ value: { mode: 'pac_script', pacScript: { data: pac } }, scope: 'regular' });
-  await sleep(400); // let Chrome pick up the new rules
+  await sleep(300); // let Chrome pick up the new rules
 }
 
 async function restoreProxy() {
@@ -129,13 +129,16 @@ async function restoreProxy() {
   else await chrome.proxy.settings.clear({ scope: 'regular' });
 }
 
-async function timedFetch(url, timeout) {
+// Returns { ms, text } or null if the request failed or timed out.
+async function timedFetch(url, timeout, read = false) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeout);
   const start = performance.now();
   try {
-    await fetch(url, { mode: 'no-cors', cache: 'no-store', credentials: 'omit', signal: ctl.signal });
-    return Math.round(performance.now() - start);
+    const res = await fetch(url, { mode: read ? 'cors' : 'no-cors', cache: 'no-store', credentials: 'omit', signal: ctl.signal });
+    const ms = Math.round(performance.now() - start);
+    const text = read ? await res.text() : '';
+    return { ms, text };
   } catch {
     return null;
   } finally {
@@ -143,11 +146,14 @@ async function timedFetch(url, timeout) {
   }
 }
 
-// HTTPS test addresses nobody browses normally (so real browsing never
-// goes through a server that is still being tested).
-const HTTPS_TEST_HOSTS = [
-  'connectivitycheck.gstatic.com', 'clients3.google.com', 'detectportal.firefox.com', 'one.one.one.one',
-  'example.com', 'example.org', 'example.net', 'www.example.com', 'www.example.org', 'www.example.net',
+// Cloudflare addresses that answer /cdn-cgi/trace with the visitor's IP and
+// country. Nobody browses them normally, so real browsing never goes through
+// a server that is still being tested. The HTTPS certificate is checked, so a
+// server that tampers with traffic fails the test.
+const TRACE_HOSTS = [
+  'one.one.one.one', '1.0.0.1', 'speed.cloudflare.com', 'cloudflare-quic.com', 'www.cloudflare.com',
+  'blog.cloudflare.com', 'developers.cloudflare.com', 'radar.cloudflare.com', 'workers.cloudflare.com',
+  'community.cloudflare.com',
 ];
 
 // Only one test may change the routing rules at a time.
@@ -158,38 +164,61 @@ function testProxiesInBrowser(servers, opts) {
   return run;
 }
 
-async function runProxyTest(servers, { onProgress } = {}) {
+// Result per server id: { ms, code } when it works, null when it doesn't.
+//   quick:     skip phase 1 (for re-checking servers that worked recently)
+//   stopAfter: stop once this many working servers were found
+//   maxTime:   stop after this many ms
+//   onBatch:   called after each batch with the results so far
+let testsRunning = 0;
+async function runProxyTest(servers, { quick = false, stopAfter = Infinity, maxTime = Infinity, onBatch } = {}) {
   const results = {};
+  testsRunning++;
   const nonce = Math.random().toString(36).slice(2, 8);
+  const started = Date.now();
+  const CHUNK = 150;
   try {
-    // Phase 1: plain HTTP through each proxy, many at once.
-    const CHUNK = 100;
     for (let i = 0; i < servers.length; i += CHUNK) {
       const chunk = servers.slice(i, i + CHUNK);
-      const byTag = {};
-      chunk.forEach((s, j) => { byTag[`${nonce}_${i + j}`] = proxyString(s); });
-      await setTestPac({ byTag });
-      await Promise.all(chunk.map(async (s, j) => {
-        results[s.id] = await timedFetch(`http://www.gstatic.com/generate_204?ogt=${nonce}_${i + j}`, 7000);
-      }));
-      onProgress?.(Math.min(i + CHUNK, servers.length), servers.length);
-    }
-    // Phase 2: secure (HTTPS) sites through the ones that passed, fastest first.
-    const passed = servers.filter((s) => results[s.id] != null).sort((a, b) => results[a.id] - results[b.id]).slice(0, 80);
-    for (const s of servers) if (!passed.includes(s)) results[s.id] = null;
-    for (let i = 0; i < passed.length; i += HTTPS_TEST_HOSTS.length) {
-      const round = passed.slice(i, i + HTTPS_TEST_HOSTS.length);
-      const byHost = {};
-      round.forEach((s, j) => { byHost[HTTPS_TEST_HOSTS[j]] = proxyString(s); });
-      await setTestPac({ byHost });
-      await Promise.all(round.map(async (s, j) => {
-        results[s.id] = await timedFetch(`https://${HTTPS_TEST_HOSTS[j]}/?ogt=${nonce}`, 8000);
-      }));
+      let passed = chunk;
+      if (!quick) {
+        // Phase 1: a plain HTTP request through each proxy, many at once.
+        const byTag = {};
+        chunk.forEach((s, j) => { byTag[`${nonce}_${i + j}`] = proxyString(s); });
+        await setTestPac({ byTag });
+        const first = {};
+        await Promise.all(chunk.map(async (s, j) => {
+          first[s.id] = await timedFetch(`http://www.gstatic.com/generate_204?ogt=${nonce}_${i + j}`, 6000);
+        }));
+        passed = chunk.filter((s) => first[s.id]).sort((a, b) => first[a.id].ms - first[b.id].ms);
+      }
+      for (const s of chunk) results[s.id] = null;
+      // Phase 2: a secure (HTTPS) page through each one that passed.
+      for (let k = 0; k < passed.length; k += TRACE_HOSTS.length) {
+        const round = passed.slice(k, k + TRACE_HOSTS.length);
+        const byHost = {};
+        round.forEach((s, j) => { byHost[TRACE_HOSTS[j]] = proxyString(s); });
+        await setTestPac({ byHost });
+        await Promise.all(round.map(async (s, j) => {
+          const r = await timedFetch(`https://${TRACE_HOSTS[j]}/cdn-cgi/trace`, 8000, true);
+          if (!r) return;
+          const loc = (r.text.match(/^loc=([A-Z]{2})$/m) || [])[1] || '';
+          results[s.id] = { ms: r.ms, code: loc === 'XX' ? '' : loc };
+        }));
+      }
+      const working = Object.values(results).filter(Boolean).length;
+      await onBatch?.(results, Math.min(i + CHUNK, servers.length), servers.length);
+      if (working >= stopAfter || Date.now() - started > maxTime) break;
     }
   } finally {
     await restoreProxy();
+    setTimeout(() => { testsRunning--; }, 1500); // late error events from the test
   }
   return results;
+}
+
+function withResult(s, r) {
+  if (!r?.code) return s;
+  return { ...s, code: r.code, flag: flagFromCode(r.code), country: countryName(r.code) };
 }
 
 // ---------- free servers: find, test, keep the fastest ----------
@@ -198,38 +227,86 @@ async function refreshFree({ force = false } = {}) {
   if (refreshing) return refreshing;
   refreshing = (async () => {
     const fs = await getFreeStatus();
-    if (!force && fs.at && Date.now() - fs.at < 5 * 60 * 1000 && (await getFreeServers()).length) return fs;
-    await setFreeStatus({ state: 'loading', error: '' });
+    if (!force && fs.at && Date.now() - fs.at < 10 * 60 * 1000 && (await getFreeServers()).length >= 5) return fs;
+    await setFreeStatus({ state: 'loading', error: '', progress: 0 });
     try {
-      const { candidates, sourcesOk } = await fetchFreeProxies({ max: 500 });
-      if (!candidates.length) throw new Error('Could not download any free server lists. Check your internet connection.');
-      // Re-test the servers that worked last time too.
+      const { candidates, sourcesOk } = await fetchFreeProxies({ max: 1500 });
       const previous = await getFreeServers();
-      const pool = [...previous, ...candidates.filter((c) => !previous.some((p) => p.id === c.id))];
-      await setFreeStatus({ state: 'testing', found: pool.length, progress: 0 });
-      const ms = await testProxiesInBrowser(pool, {
-        onProgress: (done, total) => setFreeStatus({ progress: Math.round((done / total) * 100) }),
+      if (!candidates.length && !previous.length) {
+        throw new Error('Could not download the free server lists. Check your internet connection.');
+      }
+      // Servers that worked last time go first, so results come back fast.
+      const prevIds = new Set(previous.map((p) => p.id));
+      const pool = [...previous, ...candidates.filter((c) => !prevIds.has(c.id))];
+      await setFreeStatus({ state: 'testing', found: pool.length, progress: 0, working: 0 });
+
+      const save = async (results, done, total) => {
+        const working = pool.filter((s) => results[s.id])
+          .sort((a, b) => results[a.id].ms - results[b.id].ms)
+          .slice(0, KEEP_FREE)
+          .map((s) => withResult(s, results[s.id]));
+        const pings = await getPings();
+        for (const s of pool) if (s.id in results) delete pings[s.id];
+        for (const s of working) pings[s.id] = { ms: results[s.id].ms, kind: 'real', at: Date.now() };
+        // Keep not-yet-retested old servers until the new list is big enough.
+        const keepOld = previous.filter((p) => !(p.id in results) && !working.some((w) => w.id === p.id));
+        await set({ freeServers: [...working, ...keepOld].slice(0, KEEP_FREE), pings });
+        await setFreeStatus({ progress: Math.round((done / total) * 100), working: working.length });
+        return working;
+      };
+      let final = [];
+      await testProxiesInBrowser(pool, {
+        stopAfter: KEEP_FREE, maxTime: 4 * 60 * 1000,
+        onBatch: async (results, done, total) => { final = await save(results, done, total); },
       });
-      const working = pool.filter((s) => ms[s.id] != null).sort((a, b) => ms[a.id] - ms[b.id]).slice(0, KEEP_FREE);
-      await addCountries(working);
-      const pings = await getPings();
-      for (const s of pool) delete pings[s.id];
-      for (const s of working) pings[s.id] = { ms: ms[s.id], kind: 'real', at: Date.now() };
-      await set({ freeServers: working, pings });
-      const st = { state: 'idle', at: Date.now(), found: pool.length, working: working.length, sources: sourcesOk, error: '' };
-      if (!working.length) st.error = 'No free server answered right now. Trying again soon.';
+      await addCountries(final);
+      await set({ freeServers: final });
+      const st = { state: 'idle', at: Date.now(), found: pool.length, working: final.length, sources: sourcesOk, error: '' };
+      if (!final.length) st.error = 'No free server is answering right now. OpenGate will try again in a few minutes.';
       await setFreeStatus(st);
-      // Keep an active connection on the fresh list.
-      const prefs = await getPrefs();
+      // Move an active connection onto the fresh list.
       // (not awaited: connect() may itself be waiting for this refresh)
-      if (prefs.enabled && prefs.selected === 'auto' && !connecting && (await getStatus()).usingFree) connect();
+      const prefs = await getPrefs();
+      if (final.length && prefs.enabled && prefs.selected === 'auto' && !connecting && (await getStatus()).usingFree) connect();
       return st;
     } catch (e) {
-      await setFreeStatus({ state: 'idle', error: e.message || String(e) });
+      await setFreeStatus({ state: 'idle', at: Date.now(), error: e.message || String(e) });
       throw e;
     }
   })();
   try { return await refreshing; } finally { refreshing = null; }
+}
+
+// Re-checks the servers in use; swaps out dead ones and tops up the list.
+let checkingHealth = null;
+async function healthCheck() {
+  if (checkingHealth) return checkingHealth;
+  checkingHealth = (async () => {
+    const prefs = await getPrefs();
+    const status = await getStatus();
+    if (!prefs.enabled || status.state !== 'on' || !status.usingFree) return;
+    if (refreshing || connecting) return; // a fresh list is on its way anyway
+    const all = await getAllServers();
+    const inUse = (status.servers || []).map((id) => all.find((s) => s.id === id)).filter(Boolean);
+    if (!inUse.length) return;
+    const res = await testProxiesInBrowser(inUse, { quick: true });
+    const pings = await getPings();
+    const now = Date.now();
+    for (const s of inUse) pings[s.id] = { ms: res[s.id]?.ms ?? null, kind: 'real', at: now };
+    await set({ pings });
+    if (refreshing || connecting) return;
+    const dead = inUse.filter((s) => !res[s.id]);
+    if (dead.length) {
+      const free = (await getFreeServers()).filter((s) => !dead.some((d) => d.id === s.id));
+      await set({ freeServers: free });
+      if (!res[inUse[0].id]) await setStatus({ warning: 'A server stopped answering — switched to the next fastest one.' });
+      await connect();
+    }
+    const left = (await getFreeServers()).filter((s) => pings[s.id]?.ms != null).length;
+    const lastSearch = (await getFreeStatus()).at || 0;
+    if (left < 10 && !refreshing && Date.now() - lastSearch > 5 * 60 * 1000) refreshFree({ force: true }).catch(() => {});
+  })();
+  try { return await checkingHealth; } finally { checkingHealth = null; }
 }
 
 // ---------- speed test of your own (Xray) servers via the helper ----------
@@ -257,7 +334,7 @@ async function testOwnServers(onlyIds) {
     const direct = (await getOwnServers()).filter((s) => s.kind === 'direct' && (!onlyIds || onlyIds.includes(s.id)));
     if (direct.length) {
       const ms = await testProxiesInBrowser(direct);
-      for (const s of direct) pings[s.id] = { ms: ms[s.id], kind: 'real', at: now };
+      for (const s of direct) pings[s.id] = { ms: ms[s.id]?.ms ?? null, kind: 'real', at: now };
     }
     await set({ pings });
     return { tested: servers.length + direct.length };
@@ -314,10 +391,28 @@ async function pickServers(prefs) {
   }
 
   // Otherwise: free servers (no setup), plus any plain proxies you added.
-  let free = [...(await getFreeServers()), ...(await getOwnServers()).filter((s) => s.kind === 'direct')].filter(works);
+  const freeNow = async () => [...(await getFreeServers()), ...(await getOwnServers()).filter((s) => s.kind === 'direct')]
+    .filter((s) => (pingsNow[s.id]?.ms != null));
+  let pingsNow = pings;
+  let free = await freeNow();
+  // Running low: top up in the background (at most every 5 minutes, to avoid endless re-testing).
+  const lastSearch = (await getFreeStatus()).at || 0;
+  if (free.length < 3 && !refreshing && Date.now() - lastSearch > 5 * 60 * 1000) refreshFree({ force: true }).catch(() => {});
   if (!free.length) {
-    await refreshFree({ force: true }).catch(() => {});
-    free = (await getFreeServers()).filter(works);
+    // Nothing yet: wait for the search and connect as soon as servers show up.
+    const search = (refreshing || refreshFree({ force: true })).catch(() => {});
+    const deadline = Date.now() + 180000;
+    let finished = false;
+    search.then(() => { finished = true; });
+    let firstFoundAt = 0;
+    while (Date.now() < deadline) {
+      pingsNow = await getPings();
+      free = await freeNow();
+      if (free.length && !firstFoundAt) firstFoundAt = Date.now();
+      // Connect with 2+ servers (one is a backup), or with 1 after a short wait.
+      if (free.length >= 2 || finished || (firstFoundAt && Date.now() - firstFoundAt > 6000)) break;
+      await sleep(1000);
+    }
   }
   const ranked = rank(inCountry(free), await getPings());
   return { servers: ranked.slice(0, Math.max(2, prefs.autoPool)), core: false };
@@ -338,7 +433,9 @@ async function connect() {
 
 async function doConnect() {
   const prefs = await savePrefs({ enabled: true });
-  await setStatus({ state: 'connecting', error: '', warning: '' });
+  const before = await getStatus();
+  // Switching servers while on: keep showing "on" (traffic keeps flowing).
+  if (before.state !== 'on') await setStatus({ state: 'connecting', error: '', warning: '' });
   try {
     if (prefs.mode === 'targeted' && !prefs.sites.length) {
       throw new Error('"Only my site list" is on but the list is empty. Add a site in the Sites tab.');
@@ -429,10 +526,11 @@ async function removeSites(list) {
 }
 
 // ---------- automatic failover ----------
-// Chrome already skips a dead server in the chain; if errors keep coming,
-// drop the first server and, when we run low, fetch a fresh list.
+// Chrome already skips a dead server in the chain. If errors keep coming,
+// re-check the servers in use and swap out the dead ones.
 let errorTimes = [];
 chrome.proxy.onProxyError.addListener(async (details) => {
+  if (testsRunning > 0) return; // failed test requests are expected
   const prefs = await getPrefs();
   const status = await getStatus();
   if (!prefs.enabled || status.state !== 'on') return;
@@ -440,23 +538,10 @@ chrome.proxy.onProxyError.addListener(async (details) => {
   const now = Date.now();
   errorTimes = errorTimes.filter((t) => now - t < 20000);
   errorTimes.push(now);
-  if (errorTimes.length < 4) return;
+  if (errorTimes.length < 3) return;
   errorTimes = [];
-  if (status.usingFree) {
-    const dead = status.servers?.[0];
-    if (dead) {
-      const pings = await getPings();
-      pings[dead] = { ms: null, kind: 'real', at: now };
-      await set({ pings });
-    }
-    await setStatus({ warning: 'A server stopped answering — switched to the next fastest one.' });
-    await connect();
-    const fresh = await getPings();
-    const left = (await getFreeServers()).filter((s) => fresh[s.id]?.ms != null).length;
-    if (left < 3) refreshFree({ force: true }).catch(() => {});
-  } else {
-    await setStatus({ warning: `Can't reach the VPN (${details.error}). Try another server.` });
-  }
+  if (status.usingFree) healthCheck().catch(() => {});
+  else await setStatus({ warning: `Can't reach the VPN (${details.error}). Try another server.` });
 });
 
 // Logins for plain HTTP/SOCKS proxies you added that need a username.
@@ -472,13 +557,19 @@ chrome.webRequest.onAuthRequired.addListener(
 );
 
 // ---------- lifecycle ----------
-chrome.runtime.onInstalled.addListener(async () => {
+function scheduleAlarms() {
   chrome.alarms.create('refresh', { periodInMinutes: FREE_REFRESH_MIN });
+  chrome.alarms.create('health', { periodInMinutes: 2 });
+}
+
+chrome.runtime.onInstalled.addListener(async () => {
+  scheduleAlarms();
   await updateBadge();
   refreshFree({ force: true }).catch(() => {}); // find free servers right away
 });
 
 chrome.runtime.onStartup.addListener(async () => {
+  scheduleAlarms();
   const prefs = await getPrefs();
   if (prefs.enabled) await connect();
   else await updateBadge();
@@ -486,10 +577,31 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 chrome.alarms.onAlarm.addListener(async (a) => {
-  if (a.name !== 'refresh') return;
-  await refreshListUrls();
-  await refreshFree({ force: true }).catch(() => {});
+  if (a.name === 'health') {
+    await healthCheck().catch(() => {});
+  } else if (a.name === 'refresh') {
+    await refreshListUrls();
+    await refreshFree({ force: true }).catch(() => {});
+  }
 });
+
+// Chrome can stop this background script at any time. If that happened in
+// the middle of a test or a connect, put things back in a clean state.
+(async () => {
+  const fs = await getFreeStatus();
+  const status = await getStatus();
+  if (!refreshing && (fs.state === 'loading' || fs.state === 'testing')) {
+    await setFreeStatus({ state: 'idle' });
+    await restoreProxy();
+  }
+  if (!connecting && status.state === 'connecting') {
+    const prefs = await getPrefs();
+    const { activeProxy } = await get('activeProxy');
+    await setStatus({ state: prefs.enabled && activeProxy ? 'on' : 'off' });
+    await restoreProxy();
+    await updateBadge();
+  }
+})();
 
 const handlers = {
   async state() {

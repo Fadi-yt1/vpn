@@ -49,9 +49,10 @@ function render() {
   power.classList.toggle('on', on);
   power.classList.toggle('busy', connecting);
   power.classList.toggle('targeted', prefs.mode === 'targeted');
-  $('#state-text').textContent = connecting ? 'Connecting…' : on ? (prefs.mode === 'targeted' ? 'On for your sites' : 'Protected') : 'Not connected';
+  $('#state-text').textContent = connecting ? (S.freeStatus?.state === 'testing' || S.freeStatus?.state === 'loading' ? 'Finding fast servers…' : 'Connecting…') : on ? (prefs.mode === 'targeted' ? 'On for your sites' : 'Protected') : 'Not connected';
   const fsx = S.freeStatus || {};
   $('#state-sub').textContent = on ? status.label || ''
+    : connecting && fsx.state === 'testing' ? `Tested ${fsx.progress || 0}% · ${fsx.working || 0} working found`
     : fsx.state === 'loading' ? 'Finding free servers…'
       : fsx.state === 'testing' ? `Testing free servers… ${fsx.progress || 0}%`
         : servers.length ? `${servers.length} fast servers ready` : 'Press the button — free servers are found automatically';
@@ -115,9 +116,9 @@ function renderServers() {
   const fs = S.freeStatus || {};
   const busyTest = S.testing || S.refreshing || fs.state === 'loading' || fs.state === 'testing';
   $('#test-info').textContent = fs.state === 'loading' ? 'Downloading free server lists…'
-    : fs.state === 'testing' ? `Testing ${fs.found || ''} free servers… ${fs.progress || 0}%`
+    : fs.state === 'testing' ? `Testing free servers… ${fs.progress || 0}% · ${fs.working || 0} working so far`
       : fs.error ? fs.error
-        : fs.at ? `${fs.working} fast free servers found (checked ${fs.found}). Updated ${new Date(fs.at).toLocaleTimeString()} · refreshes every 30 min.`
+        : fs.at ? `${servers.filter((s) => s.free && pings[s.id]?.ms != null).length} fast free servers ready (checked ${fs.found}). Updated ${new Date(fs.at).toLocaleTimeString()} · refreshes every 30 min.`
           : 'Free servers are being prepared…';
   $('#test').disabled = busyTest;
   $('#test').textContent = busyTest ? 'Searching…' : 'Find fastest free servers';
@@ -162,6 +163,7 @@ function renderSites() {
 
 function renderSettings() {
   const { prefs } = S;
+  fillCountrySelect($('#home-country'), prefs.country, '⚡ Fastest (any country)');
   $('#auto-pool').value = String(prefs.autoPool);
   fillCountrySelect($('#auto-country'), prefs.country, 'Any country (fastest)');
   if (document.activeElement !== $('#socks-port')) $('#socks-port').value = prefs.socksPort;
@@ -326,6 +328,7 @@ $('#site-list').addEventListener('click', async (e) => {
 
 $('#helper-check').addEventListener('click', checkHelper);
 $('#auto-pool').addEventListener('change', (e) => withBusy(() => send('setPrefs', { patch: { autoPool: Number(e.target.value) } })));
+$('#home-country').addEventListener('change', (e) => withBusy(() => send('setPrefs', { patch: { country: e.target.value } })));
 $('#auto-country').addEventListener('change', (e) => withBusy(() => send('setPrefs', { patch: { country: e.target.value } })));
 for (const id of ['socks-port', 'http-port']) {
   $('#' + id).addEventListener('change', (e) => {
@@ -345,7 +348,7 @@ $('#export').addEventListener('click', async () => {
   } catch (e) { alert(e.message); }
 });
 
-chrome.storage.onChanged.addListener(() => { if (!busy) refresh(); });
+chrome.storage.onChanged.addListener(() => { refresh(); });
 
 // ---------- init ----------
 (async () => {

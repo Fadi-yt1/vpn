@@ -6,16 +6,31 @@ import { hashId } from './links.js';
 
 // type: 'json' = any JSON with ip/port objects, 'text' = one proxy per line.
 // proto: protocol to assume when a line has none.
+// weight: how much we trust the list (lists that re-check their proxies often score higher).
+const GH = 'https://raw.githubusercontent.com/';
 export const FREE_SOURCES = [
-  { name: 'Proxifly', type: 'json', url: 'https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/all/data.json' },
-  { name: 'ProxyScrape', type: 'json', url: 'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=json' },
-  { name: 'Geonode', type: 'json', url: 'https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc' },
-  { name: 'Proxifly SOCKS5', type: 'text', proto: 'socks5', url: 'https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/socks5/data.txt' },
-  { name: 'monosans SOCKS5', type: 'text', proto: 'socks5', url: 'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt' },
-  { name: 'monosans HTTP', type: 'text', proto: 'http', url: 'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt' },
-  { name: 'TheSpeedX SOCKS5', type: 'text', proto: 'socks5', url: 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt' },
-  { name: 'TheSpeedX HTTP', type: 'text', proto: 'http', url: 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt' },
+  { name: 'jetkai (online)', type: 'text', proto: 'socks5', weight: 3, url: GH + 'jetkai/proxy-list/main/online-proxies/txt/proxies-socks5.txt' },
+  { name: 'jetkai HTTP (online)', type: 'text', proto: 'http', weight: 2, url: GH + 'jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt' },
+  { name: 'monosans', type: 'text', proto: 'socks5', weight: 3, url: GH + 'monosans/proxy-list/main/proxies/socks5.txt' },
+  { name: 'monosans HTTP', type: 'text', proto: 'http', weight: 2, url: GH + 'monosans/proxy-list/main/proxies/http.txt' },
+  { name: 'elliottophellia (checked)', type: 'text', proto: 'socks5', weight: 3, url: GH + 'elliottophellia/proxylist/master/results/socks5/global/socks5_checked.txt' },
+  { name: 'roosterkid', type: 'text', proto: 'socks5', weight: 3, url: GH + 'roosterkid/openproxylist/main/SOCKS5_RAW.txt' },
+  { name: 'roosterkid HTTPS', type: 'text', proto: 'http', weight: 3, url: GH + 'roosterkid/openproxylist/main/HTTPS_RAW.txt' },
+  { name: 'vakhov', type: 'text', proto: 'socks5', weight: 3, url: GH + 'vakhov/fresh-proxy-list/master/socks5.txt' },
+  { name: 'vakhov HTTPS', type: 'text', proto: 'http', weight: 3, url: GH + 'vakhov/fresh-proxy-list/master/https.txt' },
+  { name: 'prxchk', type: 'text', proto: 'socks5', weight: 3, url: GH + 'prxchk/proxy-list/main/socks5.txt' },
+  { name: 'sunny9577', type: 'text', proto: 'socks5', weight: 2, url: GH + 'sunny9577/proxy-scraper/master/generated/socks5_proxies.txt' },
+  { name: 'hideip.me', type: 'text', proto: 'socks5', weight: 2, url: GH + 'zloi-user/hideip.me/main/socks5.txt' },
+  { name: 'Zaeem20', type: 'text', proto: 'socks5', weight: 2, url: GH + 'Zaeem20/FREE_PROXIES_LIST/master/socks5.txt' },
+  { name: 'TheSpeedX', type: 'text', proto: 'socks5', weight: 1, url: GH + 'TheSpeedX/PROXY-List/master/socks5.txt' },
+  { name: 'Proxifly HTTPS', type: 'text', proto: 'http', weight: 2, url: GH + 'proxifly/free-proxy-list/main/proxies/protocols/https/data.txt' },
+  { name: 'Proxifly SOCKS5', type: 'text', proto: 'socks5', weight: 1, url: GH + 'proxifly/free-proxy-list/main/proxies/protocols/socks5/data.txt' },
+  { name: 'ProxyScrape', type: 'json', weight: 2, url: 'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=json' },
+  { name: 'Geonode', type: 'json', weight: 2, url: 'https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc' },
 ];
+
+// Lines from huge lists are mostly dead; only read this many per list.
+const MAX_PER_SOURCE = 3000;
 
 const IP_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 const regionNames = (() => { try { return new Intl.DisplayNames(['en'], { type: 'region' }); } catch { return null; } })();
@@ -82,7 +97,7 @@ export function fromJson(data, source) {
 export function fromText(text, source, defaultProto) {
   const out = [];
   const re = /(?:(https?|socks[45]h?):\/\/)?(\d{1,3}(?:\.\d{1,3}){3}):(\d{2,5})/i;
-  for (const line of text.split(/\r?\n/)) {
+  for (const line of text.split(/\r?\n/, MAX_PER_SOURCE)) {
     const m = line.match(re);
     if (!m) continue;
     const s = makeServer(m[1] || defaultProto, m[2], m[3], '', source);
@@ -103,10 +118,11 @@ async function fetchWithTimeout(url, ms) {
   }
 }
 
-// Returns de-duplicated candidates, best-looking first (SOCKS5 and known country first).
-export async function fetchFreeProxies({ max = 600 } = {}) {
+// Returns de-duplicated candidates, most promising first: proxies that several
+// trusted lists agree on are usually alive.
+export async function fetchFreeProxies({ max = 1500 } = {}) {
   const results = await Promise.allSettled(FREE_SOURCES.map(async (src) => {
-    const text = await fetchWithTimeout(src.url, 20000);
+    const text = await fetchWithTimeout(src.url, 25000);
     if (src.type === 'json') {
       try { return fromJson(JSON.parse(text), src.name); } catch { return fromText(text, src.name, 'http'); }
     }
@@ -115,17 +131,20 @@ export async function fetchFreeProxies({ max = 600 } = {}) {
   const byKey = new Map();
   const sourcesOk = [];
   results.forEach((r, i) => {
-    if (r.status !== 'fulfilled') return;
-    if (r.value.length) sourcesOk.push(FREE_SOURCES[i].name);
+    if (r.status !== 'fulfilled' || !r.value.length) return;
+    const src = FREE_SOURCES[i];
+    sourcesOk.push(src.name);
     for (const s of r.value) {
       const prev = byKey.get(s.id);
-      if (!prev) byKey.set(s.id, { ...s, seen: 1 });
-      else { prev.seen++; if (!prev.code && s.code) Object.assign(prev, { code: s.code, flag: s.flag, country: s.country }); }
+      if (!prev) byKey.set(s.id, { ...s, score: src.weight });
+      else {
+        prev.score += src.weight;
+        if (!prev.code && s.code) Object.assign(prev, { code: s.code, flag: s.flag, country: s.country });
+      }
     }
   });
-  // Proxies listed by several sources are usually alive; prefer them.
   const list = [...byKey.values()].sort((a, b) =>
-    (b.seen - a.seen) || ((b.proto === 'socks5') - (a.proto === 'socks5')) || (!!b.code - !!a.code));
+    (b.score - a.score) || ((b.proto === 'socks5') - (a.proto === 'socks5')));
   return { candidates: list.slice(0, max), total: list.length, sourcesOk };
 }
 
