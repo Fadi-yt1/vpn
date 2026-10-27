@@ -142,7 +142,10 @@ function countries() {
 function flagOf(country) { return S.servers.find((s) => s.country === country)?.flag || '🌐'; }
 
 function fillCountrySelect(sel, value, anyLabel) {
-  const opts = [`<option value="">${anyLabel}</option>`, ...countries().map(([c, n]) => `<option value="${esc(c)}">${flagOf(c)} ${esc(c)} (${n})</option>`)];
+  if (document.activeElement === sel) return; // user is choosing right now
+  const list = countries();
+  if (value && !list.some(([c]) => c === value)) list.push([value, 0]);
+  const opts = [`<option value="">${anyLabel}</option>`, ...list.map(([c, n]) => `<option value="${esc(c)}">${flagOf(c)} ${esc(c)} (${n})</option>`)];
   const html = opts.join('');
   if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
   sel.value = value;
@@ -299,7 +302,7 @@ $('#server-list').addEventListener('click', async (e) => {
   if (e.target.id === 'show-all') { showAll = true; renderServers(); return; }
   const row = e.target.closest('.srv');
   if (!row) return;
-  await withBusy(() => send('setPrefs', { patch: { selected: row.dataset.id } }));
+  await savePref({ selected: row.dataset.id });
   showTab('home');
 });
 
@@ -386,17 +389,19 @@ $('#site-list').addEventListener('click', async (e) => {
 });
 
 $('#helper-check').addEventListener('click', checkHelper);
-$('#auto-pool').addEventListener('change', (e) => withBusy(() => send('setPrefs', { patch: { autoPool: Number(e.target.value) } })));
-$('#home-country').addEventListener('change', (e) => withBusy(() => send('setPrefs', { patch: { country: e.target.value } })));
-$('#auto-country').addEventListener('change', (e) => withBusy(() => send('setPrefs', { patch: { country: e.target.value } })));
+// Note: read e.target.value BEFORE withBusy(), which re-renders (and resets) the controls.
+function savePref(patch) { return withBusy(() => send('setPrefs', { patch })); }
+$('#auto-pool').addEventListener('change', (e) => savePref({ autoPool: Number(e.target.value) }));
+$('#home-country').addEventListener('change', (e) => savePref({ country: e.target.value }));
+$('#auto-country').addEventListener('change', (e) => savePref({ country: e.target.value }));
 for (const id of ['socks-port', 'http-port']) {
   $('#' + id).addEventListener('change', (e) => {
     const v = Number(e.target.value);
     if (v < 1024 || v > 65535) { alert('Port must be between 1024 and 65535'); return; }
-    withBusy(() => send('setPrefs', { patch: { [id === 'socks-port' ? 'socksPort' : 'httpPort']: v } }));
+    savePref({ [id === 'socks-port' ? 'socksPort' : 'httpPort']: v });
   });
 }
-$('#manual-core').addEventListener('change', (e) => withBusy(() => send('setPrefs', { patch: { manualCore: e.target.checked } })));
+$('#manual-core').addEventListener('change', (e) => savePref({ manualCore: e.target.checked }));
 $('#export').addEventListener('click', async () => {
   try {
     const cfg = await send('exportConfig');
