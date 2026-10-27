@@ -2,11 +2,11 @@
 
 A free VPN extension for Chrome, Edge, Brave, Vivaldi and other Chromium browsers.
 
-- **Free servers you choose.** Import any VLESS / VMess / Trojan / Shadowsocks server list (for example a `.txt` subscription file such as AetrisVPN's), a subscription URL, or plain HTTP/SOCKS proxies.
+- **Free servers you choose.** Import any VLESS / VMess / Trojan / Shadowsocks server list (for example a `.txt` file such as AetrisVPN's), a link to a server list, or plain HTTP/SOCKS proxies.
 - **Fast servers automatically.** "Test speed" makes a real request through every server and sorts them fastest first. **Auto** mode spreads traffic over the fastest working servers and switches automatically when one slows down or dies (Xray's `leastPing` balancer).
 - **Targeted website mode.** Choose **"Only my site list"** and only those sites (and their subdomains) go through the VPN, so only they see a different IP. Everything else keeps your normal, fast connection. There are one-click presets for YouTube, Instagram, X, Discord, Telegram Web, ChatGPT and more, plus an "Add the site in this tab" button.
 - **Full mode.** Choose **"All sites"** to send all browser traffic through the VPN.
-- No accounts, ads or tracking. Your lists and settings stay in your browser.
+- **No paid plans, ever.** No accounts, sign-ups, ads or tracking. Your lists and settings stay in your browser.
 
 ## How it works
 
@@ -51,7 +51,7 @@ The installer downloads the latest official Xray-core from [github.com/XTLS/Xray
 ### 3. Add servers and connect
 
 1. Click the OpenGate icon → **Servers** → **Add servers**.
-2. Import your server file (for example `AetrisVPN.txt`), paste links, or add a subscription URL. URL lists refresh every hour.
+2. Import your server file (for example `AetrisVPN.txt`), paste links, or add a link to a server list. Linked lists refresh every hour.
 3. Click **Test speed of all servers**.
 4. Go to **Home**, choose **All sites** or **Only my site list**, and press the power button.
 5. Press **Check my IP** to confirm it works.
@@ -69,7 +69,7 @@ Tip: some sites load videos or images from other domains, for example YouTube us
 ## Tips
 
 - **Pick a server outside your country** to unblock sites blocked there. Use Settings → *Auto mode: country*, or pick a server by hand in the Servers list.
-- Servers in some free lists change often. If things stop working, run the speed test again. Subscription URLs refresh on their own.
+- Servers in some free lists change often. If things stop working, run the speed test again. Linked server lists refresh on their own.
 - Already using v2rayN, Hiddify, Nekoray or sing-box? Tick **"I run Xray… myself"** in Settings, set the same local SOCKS port, and OpenGate will only handle the per-site routing.
 - **Download Xray config** exports a ready-to-run config for your chosen servers.
 
@@ -82,13 +82,13 @@ Tip: some sites load videos or images from other domains, for example YouTube us
 ## Development
 
 ```bash
-node tests/check.mjs path/to/subscription.txt   # parse a server list + build a config + check site routing
+node tests/check.mjs path/to/servers.txt   # parse a server list + build a config + check site routing
 ```
 
 Files:
 
-- `extension/lib/links.js` reads share links and subscription files
+- `extension/lib/links.js` reads share links and server list files
 - `extension/lib/xray.js` builds the Xray config (one server, or a balanced pool of the fastest)
 - `extension/lib/pac.js` sets which sites use the VPN
-- `extension/background.js` handles connecting, speed tests and subscriptions
+- `extension/background.js` handles connecting, speed tests and server list updates
 - `helper/opengate_host.py` is the native messaging helper (no extra Python packages needed)
