@@ -262,7 +262,7 @@ async function refreshFree({ force = false } = {}) {
       await addCountries(final);
       await set({ freeServers: final });
       const st = { state: 'idle', at: Date.now(), found: pool.length, working: final.length, sources: sourcesOk, error: '' };
-      if (!final.length) st.error = 'No free server is answering right now. OpenGate will try again in a few minutes.';
+      if (!final.length) st.error = 'No free server is answering right now. Tervyn will try again in a few minutes.';
       await setFreeStatus(st);
       // Move an active connection onto the fresh list.
       // (not awaited: connect() may itself be waiting for this refresh)

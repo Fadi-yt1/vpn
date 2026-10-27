@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenGate VPN helper.
+"""Tervyn VPN helper.
 
 Chrome starts this script through "native messaging" when the extension needs
 it. It starts/stops Xray-core with the config the extension sends, and tests
@@ -211,7 +211,7 @@ def socks_http_get(port, url, timeout):
             rep = s.recv(10)
             if len(rep) < 2 or rep[1] != 0:
                 return None
-            s.sendall(f"GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: OpenGate\r\nConnection: close\r\n\r\n".encode())
+            s.sendall(f"GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: Tervyn\r\nConnection: close\r\n\r\n".encode())
             first = s.recv(64)
             if not first.startswith(b"HTTP/1."):
                 return None

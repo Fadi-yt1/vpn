@@ -2,157 +2,202 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>OpenGate VPN</title>
+  <title>Tervyn VPN</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header>
-    <div class="brand"><img src="icons/on32.png" alt=""> OpenGate <span>VPN</span></div>
-    <span class="free">100% free</span>
-  </header>
+  <!-- Reusable icons -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="g-logo" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#9a7bff"/><stop offset="1" stop-color="#5636e8"/>
+      </linearGradient>
+      <symbol id="i-logo" viewBox="0 0 32 32">
+        <path d="M2.6 3.2h26.8v6.4H2.6z" fill="url(#g-logo)"/>
+        <path d="M2.6 12.8h11.2v12.8l2.2 2.2 2.2-2.2V12.8h11.2v3.8L16 30.1 2.6 16.6z" fill="url(#g-logo)"/>
+        <path d="M2.6 3.2H16v6.4H2.6z" fill="#fff" opacity=".22"/>
+      </symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" fill="currentColor"/></symbol>
+      <symbol id="i-servers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="4" width="17" height="6.5" rx="1.6"/><rect x="3.5" y="13.5" width="17" height="6.5" rx="1.6"/><path d="M7 7.25h.01M7 16.75h.01" stroke-width="2.6" stroke-linecap="round"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.3 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.3-3.5-8.5s1.1-6.1 3.5-8.5z"/></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.8l1.6 2.3 2.7-.7.7 2.7 2.6 1-.9 2.6 1.6 2.3-2.3 1.6.1 2.8-2.8.2-1 2.6-2.6-.9L12 21.2l-1.6-2.3-2.6.9-1-2.6-2.8-.2.1-2.8-2.3-1.6 1.6-2.3-.9-2.6 2.6-1 .7-2.7 2.7.7z"/></symbol>
+      <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3.5v8"/><path d="M7 6.6a7.5 7.5 0 1 0 10 0"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2.5 4 5.5v6c0 4.9 3.4 9 8 10 4.6-1 8-5.1 8-10v-6z" fill="currentColor"/><path d="m8.4 12.2 2.5 2.5 4.8-5" fill="none" stroke="#0b0e26" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 2.5a7 7 0 0 0-7 7c0 5 7 12 7 12s7-7 7-12a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" fill="currentColor"/></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 2 4.5 13.5h6L9.5 22l9-11.5h-6z" fill="currentColor"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.2" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+      <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+    </defs>
+  </svg>
 
-  <nav class="tabs">
-    <button data-tab="home" class="active">Home</button>
-    <button data-tab="servers">Servers</button>
-    <button data-tab="sites">Sites</button>
-    <button data-tab="settings">Settings</button>
-  </nav>
-
-  <!-- HOME -->
-  <section id="tab-home" class="tab active">
-    <div class="power-wrap">
-      <button id="power" class="power" title="Connect / disconnect">
-        <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>
-      </button>
-      <div id="state-text" class="state-text">Not connected</div>
-      <div id="state-sub" class="state-sub"></div>
-    </div>
-
-    <div id="error" class="alert hidden"></div>
-    <div id="warning" class="alert warn hidden"></div>
-
-    <label class="label">Which sites use the VPN?</label>
-    <div class="segmented" id="mode">
-      <button data-mode="full">All sites</button>
-      <button data-mode="targeted">Only my site list</button>
-    </div>
-
-    <label class="label">Location</label>
-    <select id="home-country"></select>
-
-    <div id="current-site" class="card row hidden">
-      <div>
-        <div class="muted small">This tab</div>
-        <div id="current-host" class="strong"></div>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <svg class="logo"><use href="#i-logo"/></svg>
+        <span class="brand-name">Tervyn</span><span class="brand-vpn">VPN</span>
       </div>
-      <button id="toggle-current" class="btn small"></button>
-    </div>
+      <span id="status-pill" class="pill off"><i></i><span>Off</span></span>
+    </header>
 
-    <label class="label">Server</label>
-    <button id="server-pick" class="card row server-pick">
-      <span id="server-flag" class="flag">⚡</span>
-      <span class="grow">
-        <span id="server-name" class="strong">Auto · fastest server</span>
-        <span id="server-sub" class="muted small block"></span>
-      </span>
-      <span class="chev">›</span>
-    </button>
+    <nav class="tabs">
+      <button data-tab="home" class="active"><svg><use href="#i-home"/></svg>Home</button>
+      <button data-tab="servers"><svg><use href="#i-servers"/></svg>Servers</button>
+      <button data-tab="sites"><svg><use href="#i-globe"/></svg>Sites</button>
+      <button data-tab="settings"><svg><use href="#i-gear"/></svg>Settings</button>
+    </nav>
 
-    <div class="row gap">
-      <button id="check-ip" class="btn ghost grow">Check my IP</button>
-    </div>
-    <div id="ip-result" class="muted small center"></div>
-  </section>
-
-  <!-- SERVERS -->
-  <section id="tab-servers" class="tab">
-    <div class="row gap">
-      <input id="search" type="search" placeholder="Search country, host…" class="grow">
-      <select id="country-filter"></select>
-    </div>
-    <div class="row gap">
-      <button id="test" class="btn primary grow">Find fastest free servers</button>
-    </div>
-    <div id="test-info" class="muted small center"></div>
-
-    <div id="server-list" class="list"></div>
-
-    <details id="import-box" class="card">
-      <summary class="strong">Advanced: add your own servers (optional)</summary>
-      <p class="muted small">Not needed — free servers are found automatically. Use this only if you have your own server list.</p>
-      <label class="label">Server list link (free, refreshes every hour)</label>
-      <div class="row gap">
-        <input id="sub-url" type="url" placeholder="https://…" class="grow">
-        <button id="sub-add" class="btn">Add</button>
-      </div>
-      <label class="label">Or paste links (vless://, vmess://, trojan://, ss://, socks://…)</label>
-      <textarea id="paste" rows="3" placeholder="Paste server links or a server list here"></textarea>
-      <div class="row gap">
-        <button id="paste-import" class="btn grow">Import text</button>
-        <label class="btn grow file-btn">Import file…<input id="file" type="file" accept=".txt,.conf,text/plain"></label>
-      </div>
-      <div id="import-msg" class="muted small"></div>
-      <div id="sources"></div>
-    </details>
-  </section>
-
-  <!-- SITES -->
-  <section id="tab-sites" class="tab">
-    <p class="muted small">In <b>“Only my site list”</b> mode, just these sites go through the VPN. Everything else uses your normal connection (faster, and your local sites keep working). Subdomains are included.</p>
-    <div class="row gap">
-      <input id="site-input" placeholder="example.com" class="grow">
-      <button id="site-add" class="btn primary">Add</button>
-    </div>
-    <button id="site-add-current" class="btn ghost full">+ Add the site in this tab</button>
-
-    <label class="label">Quick add</label>
-    <div id="presets" class="chips"></div>
-
-    <label class="label">Your list <span id="site-count" class="muted"></span></label>
-    <div id="site-list" class="list sites"></div>
-  </section>
-
-  <!-- SETTINGS -->
-  <section id="tab-settings" class="tab">
-    <div class="card">
-      <div class="row">
-        <div class="grow">
-          <div class="strong">Helper (optional)</div>
-          <div class="muted small">Only needed for your own VLESS / Trojan / VMess servers. Free servers work without it.</div>
-          <div id="helper-status" class="muted small">Checking…</div>
+    <main>
+      <!-- HOME -->
+      <section id="tab-home" class="tab active">
+        <div class="power-wrap">
+          <div class="power-ring">
+            <button id="power" class="power" title="Connect / disconnect" aria-label="Connect or disconnect">
+              <svg><use href="#i-power"/></svg>
+            </button>
+          </div>
+          <div class="state">
+            <svg id="state-icon" class="state-icon"><use href="#i-shield"/></svg>
+            <span id="state-text" class="state-text">Not connected</span>
+          </div>
+          <div class="state-sub"><svg id="state-pin" class="pin"><use href="#i-pin"/></svg><span id="state-sub"></span></div>
         </div>
-        <button id="helper-check" class="btn small">Recheck</button>
-      </div>
-      <div id="helper-help" class="small hidden">
-        <p>VLESS / Trojan / VMess servers need a small free helper on your computer (one-time setup, about 1 minute). It runs <b>Xray-core</b> and the extension controls it for you.</p>
-        <p><b>Windows</b> – in PowerShell, from the downloaded <code>helper</code> folder:</p>
-        <code class="block">powershell -ExecutionPolicy Bypass -File install_windows.ps1</code>
-        <p><b>macOS / Linux</b> – in Terminal:</p>
-        <code class="block">bash install.sh</code>
-        <p class="muted">Then click “Recheck”. See README for details.</p>
-      </div>
-    </div>
 
-    <label class="label">Auto mode: keep ready (fastest first, backups take over)</label>
-    <select id="auto-pool">
-      <option value="2">2 servers</option>
-      <option value="3">3 servers</option>
-      <option value="5">5 servers</option>
-      <option value="8">8 servers</option>
-    </select>
+        <div id="error" class="alert hidden"></div>
+        <div id="warning" class="alert warn hidden"></div>
 
-    <label class="label">Auto mode: country</label>
-    <select id="auto-country"></select>
+        <div class="segmented" id="mode">
+          <button data-mode="full">All sites</button>
+          <button data-mode="targeted">Only selected sites</button>
+        </div>
 
-    <label class="label">Local ports (SOCKS / HTTP)</label>
-    <div class="row gap">
-      <input id="socks-port" type="number" min="1024" max="65535" class="grow">
-      <input id="http-port" type="number" min="1024" max="65535" class="grow">
-    </div>
+        <label class="label" for="home-country">Location</label>
+        <div class="select-wrap">
+          <svg class="select-icon"><use href="#i-bolt"/></svg>
+          <select id="home-country"></select>
+          <svg class="select-chev"><use href="#i-down"/></svg>
+        </div>
 
-    <label class="check"><input id="manual-core" type="checkbox"> I run Xray / v2rayN / sing-box myself (don't use the helper)</label>
-    <button id="export" class="btn ghost full">Download Xray config (own servers)</button>
-  </section>
+        <div id="home-sites-section" class="hidden">
+          <div class="label label-row"><span>Protected sites</span><button id="manage-sites" class="link" data-goto="sites">Manage</button></div>
+          <div id="current-site" class="card row current-site hidden">
+            <span class="site-badge"><svg><use href="#i-globe"/></svg></span>
+            <div class="grow">
+              <div class="tiny muted">This tab</div>
+              <div id="current-host" class="strong ellipsis"></div>
+            </div>
+            <button id="toggle-current" class="btn small"></button>
+          </div>
+          <div id="home-sites" class="home-sites"></div>
+        </div>
+
+        <label class="label">Current server</label>
+        <button id="server-pick" class="card row server-card">
+          <span id="server-flag" class="flag-badge">⚡</span>
+          <span class="grow left">
+            <span id="server-name" class="strong block ellipsis">Fastest available</span>
+            <span id="server-sub" class="muted tiny block ellipsis"></span>
+          </span>
+          <span id="server-ping" class="signal hidden"><span class="bars"><i></i><i></i><i></i></span><span class="ms"></span></span>
+          <svg class="chev"><use href="#i-chev"/></svg>
+        </button>
+      </section>
+
+      <!-- SERVERS -->
+      <section id="tab-servers" class="tab">
+        <div class="row gap">
+          <input id="search" type="search" placeholder="Search country, host…" class="grow">
+          <select id="country-filter"></select>
+        </div>
+        <button id="test" class="btn primary full">Find fastest free servers</button>
+        <div id="test-info" class="muted tiny center"></div>
+
+        <div id="server-list" class="list"></div>
+
+        <details id="import-box" class="card">
+          <summary class="strong">Advanced: add your own servers (optional)</summary>
+          <p class="muted tiny">Not needed — free servers are found automatically. Use this only if you have your own server list.</p>
+          <label class="label">Server list link (free, refreshes every hour)</label>
+          <div class="row gap">
+            <input id="sub-url" type="url" placeholder="https://…" class="grow">
+            <button id="sub-add" class="btn">Add</button>
+          </div>
+          <label class="label">Or paste links (vless://, vmess://, trojan://, ss://, socks://…)</label>
+          <textarea id="paste" rows="3" placeholder="Paste server links or a server list here"></textarea>
+          <div class="row gap">
+            <button id="paste-import" class="btn grow">Import text</button>
+            <label class="btn grow file-btn">Import file…<input id="file" type="file" accept=".txt,.conf,text/plain"></label>
+          </div>
+          <div id="import-msg" class="muted tiny"></div>
+          <div id="sources"></div>
+        </details>
+      </section>
+
+      <!-- SITES -->
+      <section id="tab-sites" class="tab">
+        <p class="muted tiny">In <b>Only selected sites</b> mode, just these sites go through the VPN. Everything else uses your normal connection. Subdomains are included.</p>
+        <div class="row gap">
+          <input id="site-input" placeholder="example.com" class="grow">
+          <button id="site-add" class="btn primary">Add</button>
+        </div>
+        <button id="site-add-current" class="btn ghost full">+ Add the site in this tab</button>
+
+        <label class="label">Quick add</label>
+        <div id="presets" class="chips"></div>
+
+        <label class="label">Your sites <span id="site-count"></span></label>
+        <div id="site-list" class="list"></div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="tab-settings" class="tab">
+        <div class="card">
+          <div class="row gap0">
+            <div class="grow">
+              <div class="strong">Helper (optional)</div>
+              <div class="muted tiny">Only needed for your own VLESS / Trojan / VMess servers. Free servers work without it.</div>
+              <div id="helper-status" class="muted tiny">Checking…</div>
+            </div>
+            <button id="helper-check" class="btn small">Recheck</button>
+          </div>
+          <div id="helper-help" class="tiny hidden">
+            <p>VLESS / Trojan / VMess servers need a small free helper on your computer (one-time setup, about 1 minute). It runs <b>Xray-core</b> and the extension controls it for you.</p>
+            <p><b>Windows</b> – in PowerShell, from the downloaded <code>helper</code> folder:</p>
+            <code class="block">powershell -ExecutionPolicy Bypass -File install_windows.ps1</code>
+            <p><b>macOS / Linux</b> – in Terminal:</p>
+            <code class="block">bash install.sh</code>
+            <p class="muted">Then click “Recheck”. See README for details.</p>
+          </div>
+        </div>
+
+        <label class="label">Backup servers kept ready</label>
+        <select id="auto-pool">
+          <option value="2">2 servers</option>
+          <option value="3">3 servers</option>
+          <option value="5">5 servers</option>
+          <option value="8">8 servers</option>
+        </select>
+
+        <label class="label">Preferred country</label>
+        <select id="auto-country"></select>
+
+        <label class="label">Local ports (SOCKS / HTTP)</label>
+        <div class="row gap">
+          <input id="socks-port" type="number" min="1024" max="65535" class="grow">
+          <input id="http-port" type="number" min="1024" max="65535" class="grow">
+        </div>
+
+        <label class="check"><input id="manual-core" type="checkbox"> I run Xray / v2rayN / sing-box myself (don't use the helper)</label>
+        <button id="export" class="btn ghost full">Download Xray config (own servers)</button>
+      </section>
+    </main>
+
+    <button id="check-ip" class="footer" title="Check my IP address">
+      <svg class="lock"><use href="#i-lock"/></svg>
+      <span id="footer-text" class="grow left">Not connected</span>
+      <svg class="chev"><use href="#i-chev"/></svg>
+    </button>
+  </div>
 
   <script type="module" src="popup.js"></script>
 </body>

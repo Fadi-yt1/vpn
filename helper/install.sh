@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OpenGate VPN helper installer for macOS and Linux.
+# Tervyn VPN helper installer for macOS and Linux.
 #   bash install.sh              install / update
 #   bash install.sh --uninstall  remove everything
 #   bash install.sh --id <extension-id>   allow a different extension id (e.g. a store build)
@@ -33,7 +33,7 @@ if [ "$UNINSTALL" = 1 ]; then
   [ -f "$HOME_DIR/xray.pid" ] && kill "$(cat "$HOME_DIR/xray.pid")" 2>/dev/null || true
   for d in "${BROWSER_DIRS[@]}"; do rm -f "$BASE/$d/NativeMessagingHosts/$HOST_NAME.json"; done
   rm -rf "$HOME_DIR"
-  echo "OpenGate helper removed."
+  echo "Tervyn helper removed."
   exit 0
 fi
 
@@ -76,7 +76,7 @@ chmod +x "$HOME_DIR/opengate_host.sh"
 MANIFEST=$(cat <<EOF
 {
   "name": "$HOST_NAME",
-  "description": "OpenGate VPN helper",
+  "description": "Tervyn VPN helper",
   "path": "$HOME_DIR/opengate_host.sh",
   "type": "stdio",
   "allowed_origins": ["chrome-extension://$EXT_ID/"]
@@ -100,4 +100,4 @@ fi
 
 echo
 "$HOME_DIR/xray/xray" version | head -n1
-echo "Done! Open the OpenGate extension → Settings → Recheck."
+echo "Done! Open the Tervyn extension → Settings → Recheck."

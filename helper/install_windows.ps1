@@ -1,4 +1,4 @@
-# OpenGate VPN helper installer for Windows.
+# Tervyn VPN helper installer for Windows.
 #   powershell -ExecutionPolicy Bypass -File install_windows.ps1
 #   powershell -ExecutionPolicy Bypass -File install_windows.ps1 -Uninstall
 #   powershell -ExecutionPolicy Bypass -File install_windows.ps1 -Id <extension-id>
@@ -33,7 +33,7 @@ if ($Uninstall) {
   Stop-Xray
   foreach ($r in $RegRoots) { Remove-Item -Path "$r\$HostName" -Force -ErrorAction SilentlyContinue }
   Remove-Item -Recurse -Force $HomeDir -ErrorAction SilentlyContinue
-  Write-Host "OpenGate helper removed."
+  Write-Host "Tervyn helper removed."
   exit 0
 }
 
@@ -73,7 +73,7 @@ Set-Content -Encoding ASCII -Path $Bat -Value "@echo off`r`n`"$Python`" -u `"%~d
 $ManifestPath = Join-Path $HomeDir "$HostName.json"
 $Manifest = @{
   name = $HostName
-  description = "OpenGate VPN helper"
+  description = "Tervyn VPN helper"
   path = $Bat
   type = "stdio"
   allowed_origins = @("chrome-extension://$Id/")
@@ -86,4 +86,4 @@ foreach ($r in $RegRoots) {
 }
 
 & (Join-Path $HomeDir "xray\xray.exe") version | Select-Object -First 1
-Write-Host "Done! Open the OpenGate extension -> Settings -> Recheck."
+Write-Host "Done! Open the Tervyn extension -> Settings -> Recheck."

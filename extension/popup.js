@@ -39,23 +39,44 @@ function pingBadge(p) {
 }
 
 // ---------- rendering ----------
+let ipText = '';       // result of the last "check my IP", shown in the footer
+let lastOn = null;
+
+function speedInfo(ms) {
+  if (ms == null) return { cls: '', bars: 0, text: 'Checking speed…' };
+  if (ms < 400) return { cls: 's3', bars: 3, text: 'Optimized • Low latency' };
+  if (ms < 1000) return { cls: 's2 ok', bars: 2, text: 'Good connection' };
+  return { cls: 's1 bad', bars: 1, text: 'Slower connection' };
+}
+
 function render() {
   if (!S) return;
   const { prefs, status, servers, pings } = S;
   const on = prefs.enabled && status.state === 'on';
   const connecting = status.state === 'connecting' || busy;
-
-  const power = $('#power');
-  power.classList.toggle('on', on);
-  power.classList.toggle('busy', connecting);
-  power.classList.toggle('targeted', prefs.mode === 'targeted');
-  $('#state-text').textContent = connecting ? (S.freeStatus?.state === 'testing' || S.freeStatus?.state === 'loading' ? 'Finding fast servers…' : 'Connecting…') : on ? (prefs.mode === 'targeted' ? 'On for your sites' : 'Protected') : 'Not connected';
   const fsx = S.freeStatus || {};
-  $('#state-sub').textContent = on ? status.label || ''
+  const searching = fsx.state === 'testing' || fsx.state === 'loading';
+  if (on !== lastOn) { ipText = ''; lastOn = on; }
+
+  // the server in use (when on) or the chosen one
+  const activeId = on ? status.servers?.[0] : (prefs.selected !== 'auto' ? prefs.selected : null);
+  const active = activeId ? servers.find((s) => s.id === activeId) : null;
+  const place = active && active.country !== 'Unknown' ? active.country : '';
+
+  $('.power-wrap').classList.toggle('on', on && !connecting);
+  $('.power-wrap').classList.toggle('busy', connecting);
+  const pill = $('#status-pill');
+  pill.className = 'pill ' + (connecting ? 'busy' : on ? 'on' : 'off');
+  pill.querySelector('span').textContent = connecting ? 'Connecting' : on ? 'Protected' : 'Off';
+
+  $('#state-text').textContent = connecting ? (searching ? 'Finding fast servers…' : 'Connecting…')
+    : on ? (prefs.mode === 'targeted' ? 'Selected sites protected' : 'Protected connection') : 'Not connected';
+  $('#state-sub').textContent = on
+    ? [place || 'Free server', prefs.mode === 'targeted' ? `${prefs.sites.length} site${prefs.sites.length === 1 ? '' : 's'}` : 'All sites'].join(' • ')
     : connecting && fsx.state === 'testing' ? `Tested ${fsx.progress || 0}% · ${fsx.working || 0} working found`
-    : fsx.state === 'loading' ? 'Finding free servers…'
-      : fsx.state === 'testing' ? `Testing free servers… ${fsx.progress || 0}%`
-        : servers.length ? `${servers.length} fast servers ready` : 'Press the button — free servers are found automatically';
+      : fsx.state === 'loading' ? 'Finding free servers…'
+        : fsx.state === 'testing' ? `Testing free servers… ${fsx.progress || 0}%`
+          : servers.length ? `${servers.length} fast servers ready — tap to connect` : 'Tap to connect — free servers are found automatically';
 
   $('#error').classList.toggle('hidden', !status.error);
   $('#error').textContent = status.error || '';
@@ -64,24 +85,49 @@ function render() {
 
   $$('#mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === prefs.mode));
 
-  // current tab site toggle (targeted mode)
+  // Protected sites (only in "Only selected sites" mode)
+  const targeted = prefs.mode === 'targeted';
+  $('#home-sites-section').classList.toggle('hidden', !targeted);
   const cs = $('#current-site');
-  cs.classList.toggle('hidden', !(prefs.mode === 'targeted' && currentHost));
+  const tabSite = currentHost && prefs.sites.find((d) => currentHost === d || currentHost.endsWith('.' + d));
+  cs.classList.toggle('hidden', !(targeted && currentHost && !tabSite));
   if (currentHost) {
-    const site = prefs.sites.find((d) => currentHost === d || currentHost.endsWith('.' + d));
     $('#current-host').textContent = currentHost;
     const t = $('#toggle-current');
-    t.textContent = site ? 'Remove from VPN' : 'Use VPN here';
-    t.classList.toggle('primary', !site);
-    t.dataset.site = site || '';
+    t.textContent = 'Protect';
+    t.classList.add('primary');
   }
+  const shown = prefs.sites.slice(0, 2);
+  const rows = shown.map((d) => `
+    <div class="site-row">
+      <span class="site-badge"><svg><use href="#i-globe"/></svg></span>
+      <span class="name">${esc(d)}</span>
+      <button class="x" data-remove-site="${esc(d)}" title="Stop protecting ${esc(d)}">×</button>
+    </div>`);
+  if (!prefs.sites.length) rows.push('<button class="more-link" data-goto="sites">No sites yet — add sites to protect</button>');
+  const extra = prefs.sites.length - shown.length;
+  $('#manage-sites').textContent = extra > 0 ? `+${extra} more · Manage` : 'Add / manage';
+  $('#home-sites').innerHTML = rows.join('');
 
-  // selected server card
-  const sel = prefs.selected === 'auto' ? null : servers.find((s) => s.id === prefs.selected);
-  $('#server-flag').textContent = sel ? sel.flag : '⚡';
-  $('#server-name').textContent = sel ? serverTitle(sel) : 'Auto · fastest server';
-  $('#server-sub').textContent = sel ? serverSub(sel)
-    : `Free · uses the fastest working server${prefs.country ? ' in ' + prefs.country : ''}, backups take over automatically`;
+  // Current server card
+  const ms = active ? pings[active.id]?.ms : null;
+  const sp = speedInfo(ms);
+  const badge = $('#server-flag');
+  badge.classList.toggle('auto', !active);
+  if (active) badge.textContent = active.flag;
+  else badge.innerHTML = '<svg class="bolt"><use href="#i-bolt"/></svg>';
+  $('#server-name').textContent = active ? (place ? `${place}` : active.name) : 'Fastest available';
+  $('#server-sub').textContent = active
+    ? (on ? sp.text : serverSub(active))
+    : `Auto · picks the fastest free server${prefs.country ? ' in ' + prefs.country : ''}`;
+  const sig = $('#server-ping');
+  sig.classList.toggle('hidden', !(active && ms != null));
+  sig.className = `signal ${sp.cls}${active && ms != null ? '' : ' hidden'}`;
+  sig.querySelector('.ms').textContent = ms != null ? `${ms} ms` : '';
+
+  // Footer
+  $('#check-ip').classList.toggle('on', on);
+  $('#footer-text').textContent = ipText || (on ? 'Encrypted connection · tap to check your IP' : 'Not connected · tap to check your IP');
 
   renderServers();
   renderSites();
@@ -126,8 +172,8 @@ function renderServers() {
   const limit = showAll ? list.length : 60;
   const rows = [`
     <div class="srv ${prefs.selected === 'auto' ? 'selected' : ''}" data-id="auto">
-      <span class="flag">⚡</span>
-      <div class="info"><div class="name">Auto · fastest free server</div><div class="sub">Recommended — no setup, switches automatically</div></div>
+      <span class="flag auto"><svg class="bolt"><use href="#i-bolt"/></svg></span>
+      <div class="info"><div class="name">Fastest available</div><div class="sub">Recommended — no setup, switches automatically</div></div>
     </div>`];
   for (const s of list.slice(0, limit)) {
     rows.push(`
@@ -138,13 +184,13 @@ function renderServers() {
     </div>`);
   }
   if (list.length > limit) rows.push(`<button class="btn ghost more" id="show-all">Show all ${list.length} servers</button>`);
-  if (!servers.length) rows.push('<p class="muted small center">Finding free servers for you… this takes about 30 seconds the first time.</p>');
+  if (!servers.length) rows.push('<p class="muted tiny center">Finding free servers for you… this takes about 30 seconds the first time.</p>');
   $('#server-list').innerHTML = rows.join('');
 
   $('#sources').innerHTML = S.sources.map((src) => `
     <div class="source">
       <div class="grow"><div class="strong">${esc(src.name)}</div>
-      <div class="muted small">${src.count} servers · updated ${new Date(src.updatedAt).toLocaleString()}${src.type === 'url' ? ' · auto-updates' : ''}</div></div>
+      <div class="muted tiny">${src.count} servers · updated ${new Date(src.updatedAt).toLocaleString()}${src.type === 'url' ? ' · auto-updates' : ''}</div></div>
       <button class="btn small danger" data-remove-source="${src.id}">Remove</button>
     </div>`).join('');
 }
@@ -153,8 +199,13 @@ function renderSites() {
   const { prefs } = S;
   $('#site-count').textContent = prefs.sites.length ? `(${prefs.sites.length})` : '';
   $('#site-list').innerHTML = prefs.sites.length
-    ? prefs.sites.map((d) => `<div class="site"><span>${esc(d)}</span><button data-remove-site="${esc(d)}" title="Remove">×</button></div>`).join('')
-    : '<p class="muted small">No sites yet. Add one above or use Quick add.</p>';
+    ? prefs.sites.map((d) => `
+      <div class="site-row">
+        <span class="site-badge"><svg><use href="#i-globe"/></svg></span>
+        <span class="name">${esc(d)}</span>
+        <button class="x" data-remove-site="${esc(d)}" title="Remove">×</button>
+      </div>`).join('')
+    : '<p class="muted tiny">No sites yet. Add one above or use Quick add.</p>';
   $('#presets').innerHTML = PRESETS.map((p, i) => {
     const added = p.domains.every((d) => prefs.sites.includes(d));
     return `<button class="chip ${added ? 'added' : ''}" data-preset="${i}">${added ? '✓ ' : '+ '}${esc(p.name)}</button>`;
@@ -163,7 +214,7 @@ function renderSites() {
 
 function renderSettings() {
   const { prefs } = S;
-  fillCountrySelect($('#home-country'), prefs.country, '⚡ Fastest (any country)');
+  fillCountrySelect($('#home-country'), prefs.country, 'Fastest available');
   $('#auto-pool').value = String(prefs.autoPool);
   fillCountrySelect($('#auto-country'), prefs.country, 'Any country (fastest)');
   if (document.activeElement !== $('#socks-port')) $('#socks-port').value = prefs.socksPort;
@@ -214,23 +265,31 @@ $('#mode').addEventListener('click', async (e) => {
   await refresh();
 });
 
-$('#toggle-current').addEventListener('click', async (e) => {
-  const site = e.target.dataset.site;
-  if (site) await send('removeSites', { sites: [site] });
-  else await send('addSites', { sites: [currentHost] });
+$('#toggle-current').addEventListener('click', async () => {
+  await send('addSites', { sites: [currentHost] });
   await refresh();
 });
 
+$('#home-sites').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  if (btn.dataset.goto) { showTab(btn.dataset.goto); return; }
+  if (btn.dataset.removeSite) { await send('removeSites', { sites: [btn.dataset.removeSite] }); await refresh(); }
+});
+
 $('#server-pick').addEventListener('click', () => showTab('servers'));
+$('#manage-sites').addEventListener('click', () => showTab('sites'));
 
 $('#check-ip').addEventListener('click', async () => {
-  $('#ip-result').textContent = 'Checking…';
+  ipText = 'Checking your IP…'; render();
   try {
     const r = await send('checkIp');
-    $('#ip-result').textContent = r.success === false ? 'Could not check' : `${r.flag?.emoji || ''} ${r.ip} · ${r.city || ''} ${r.country || ''}`;
+    ipText = r.success === false ? 'Could not check your IP'
+      : `Your IP: ${r.ip} · ${[r.city, r.country].filter(Boolean).join(', ')} ${r.flag?.emoji || ''}`;
   } catch (e) {
-    $('#ip-result').textContent = 'Could not check: ' + e.message;
+    ipText = 'Could not check your IP: ' + e.message;
   }
+  render();
 });
 
 $('#search').addEventListener('input', renderServers);
@@ -322,7 +381,7 @@ $('#presets').addEventListener('click', async (e) => {
   await refresh();
 });
 $('#site-list').addEventListener('click', async (e) => {
-  const d = e.target.dataset.removeSite;
+  const d = e.target.closest('button')?.dataset.removeSite;
   if (d) { await send('removeSites', { sites: [d] }); await refresh(); }
 });
 
@@ -343,7 +402,7 @@ $('#export').addEventListener('click', async () => {
     const cfg = await send('exportConfig');
     const url = URL.createObjectURL(new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' }));
     const a = document.createElement('a');
-    a.href = url; a.download = 'opengate-xray-config.json'; a.click();
+    a.href = url; a.download = 'tervyn-xray-config.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   } catch (e) { alert(e.message); }
 });

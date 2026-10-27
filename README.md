@@ -1,10 +1,10 @@
-# OpenGate VPN — free browser VPN extension
+# Tervyn VPN — free browser VPN extension
 
 A free VPN extension for Chrome, Edge, Brave, Vivaldi and other Chromium browsers.
 
 **Zero setup:** install the extension, press the power button, done. No accounts, no server lists to import, nothing to install on your computer.
 
-- **Free servers found automatically.** On install and every 30 minutes, OpenGate downloads 18 public free proxy lists (jetkai, monosans, roosterkid, vakhov, prxchk, Proxifly, ProxyScrape, Geonode and more). Proxies that several lists agree on are tested first.
+- **Free servers found automatically.** On install and every 30 minutes, Tervyn downloads 18 public free proxy lists (jetkai, monosans, roosterkid, vakhov, prxchk, Proxifly, ProxyScrape, Geonode and more). Proxies that several lists agree on are tested first.
 - **Only servers that really work.** Each one must load a Cloudflare test page over HTTPS with a valid certificate. That proves it works for secure sites and doesn't tamper with traffic, and it shows the server's real country.
 - **Fast, with automatic failover.** You're connected as soon as the first working servers are found, usually in 10–20 seconds. Auto mode uses the fastest server and keeps backups ready. While you're connected, the servers in use are re-checked every 2 minutes, and dead ones are replaced without interrupting you.
 - **Choose a country.** Use the Location menu on the Home screen, or keep "Fastest".
@@ -18,7 +18,7 @@ A free VPN extension for Chrome, Edge, Brave, Vivaldi and other Chromium browser
 2. Open `chrome://extensions` (Edge: `edge://extensions`).
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and select the `extension` folder.
-5. Click the OpenGate icon and press the power button. The first time, it takes about 10–20 seconds to find working free servers.
+5. Click the Tervyn icon and press the power button. The first time, it takes about 10–20 seconds to find working free servers.
 6. Press **Check my IP** to confirm it works.
 
 ## How it works
@@ -59,11 +59,11 @@ Tip: some sites load videos or images from other domains, for example YouTube us
 - **Pick a server outside your country** to unblock sites blocked there. Use Settings → *Auto mode: country*, or pick a server by hand in the Servers list.
 - Free servers come and go. The list refreshes every 30 minutes on its own; press **Find fastest free servers** to refresh now.
 - Free public servers are often slower than paid VPNs. Targeted mode keeps everything else at full speed.
-- Already using v2rayN, Hiddify, Nekoray or sing-box? Tick **"I run Xray… myself"** in Settings, set the same local SOCKS port, and OpenGate will only handle the per-site routing.
+- Already using v2rayN, Hiddify, Nekoray or sing-box? Tick **"I run Xray… myself"** in Settings, set the same local SOCKS port, and Tervyn will only handle the per-site routing.
 
 ## Privacy and safety
 
-- **Free public servers are run by unknown people.** Secure (HTTPS) sites stay encrypted end to end, and OpenGate only keeps servers that pass a secure-site check. Still, avoid banking and other sensitive logins through free servers. Targeted mode is the safest way to use them: only the sites you list go through them.
+- **Free public servers are run by unknown people.** Secure (HTTPS) sites stay encrypted end to end, and Tervyn only keeps servers that pass a secure-site check. Still, avoid banking and other sensitive logins through free servers. Targeted mode is the safest way to use them: only the sites you list go through them.
 - In targeted mode, only the listed sites use the VPN, which is by design.
 - The helper only accepts commands from this extension's ID and only listens on `127.0.0.1`.
 
