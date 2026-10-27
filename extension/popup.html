@@ -68,14 +68,15 @@
       <select id="country-filter"></select>
     </div>
     <div class="row gap">
-      <button id="test" class="btn primary grow">Test speed of all servers</button>
+      <button id="test" class="btn primary grow">Find fastest free servers</button>
     </div>
     <div id="test-info" class="muted small center"></div>
 
     <div id="server-list" class="list"></div>
 
     <details id="import-box" class="card">
-      <summary class="strong">Add servers</summary>
+      <summary class="strong">Advanced: add your own servers (optional)</summary>
+      <p class="muted small">Not needed — free servers are found automatically. Use this only if you have your own server list.</p>
       <label class="label">Server list link (free, refreshes every hour)</label>
       <div class="row gap">
         <input id="sub-url" type="url" placeholder="https://…" class="grow">
@@ -113,7 +114,8 @@
     <div class="card">
       <div class="row">
         <div class="grow">
-          <div class="strong">Helper (Xray core)</div>
+          <div class="strong">Helper (optional)</div>
+          <div class="muted small">Only needed for your own VLESS / Trojan / VMess servers. Free servers work without it.</div>
           <div id="helper-status" class="muted small">Checking…</div>
         </div>
         <button id="helper-check" class="btn small">Recheck</button>
@@ -128,13 +130,12 @@
       </div>
     </div>
 
-    <label class="label">Auto mode: balance between the fastest</label>
+    <label class="label">Auto mode: keep ready (fastest first, backups take over)</label>
     <select id="auto-pool">
-      <option value="1">1 server</option>
+      <option value="2">2 servers</option>
       <option value="3">3 servers</option>
       <option value="5">5 servers</option>
       <option value="8">8 servers</option>
-      <option value="12">12 servers</option>
     </select>
 
     <label class="label">Auto mode: country</label>
@@ -147,7 +148,7 @@
     </div>
 
     <label class="check"><input id="manual-core" type="checkbox"> I run Xray / v2rayN / sing-box myself (don't use the helper)</label>
-    <button id="export" class="btn ghost full">Download Xray config</button>
+    <button id="export" class="btn ghost full">Download Xray config (own servers)</button>
   </section>
 
   <script type="module" src="popup.js"></script>

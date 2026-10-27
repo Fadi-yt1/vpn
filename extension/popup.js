@@ -26,6 +26,7 @@ function serverTitle(s) {
   return s.name;
 }
 function serverSub(s) {
+  if (s.free) return `Free · ${s.proto.toUpperCase()} · ${s.address}:${s.port}`;
   const net = s.kind === 'direct' ? 'proxy' : (s.net === 'raw' ? 'tcp' : s.net);
   const sec = s.security && s.security !== 'none' ? `+${s.security}` : '';
   return `${s.proto.toUpperCase()} · ${net}${sec} · ${s.address}:${s.port}`;
@@ -49,7 +50,11 @@ function render() {
   power.classList.toggle('busy', connecting);
   power.classList.toggle('targeted', prefs.mode === 'targeted');
   $('#state-text').textContent = connecting ? 'Connecting…' : on ? (prefs.mode === 'targeted' ? 'On for your sites' : 'Protected') : 'Not connected';
-  $('#state-sub').textContent = on ? status.label || '' : servers.length ? `${servers.length} servers ready` : 'Import servers to start';
+  const fsx = S.freeStatus || {};
+  $('#state-sub').textContent = on ? status.label || ''
+    : fsx.state === 'loading' ? 'Finding free servers…'
+      : fsx.state === 'testing' ? `Testing free servers… ${fsx.progress || 0}%`
+        : servers.length ? `${servers.length} fast servers ready` : 'Press the button — free servers are found automatically';
 
   $('#error').classList.toggle('hidden', !status.error);
   $('#error').textContent = status.error || '';
@@ -75,7 +80,7 @@ function render() {
   $('#server-flag').textContent = sel ? sel.flag : '⚡';
   $('#server-name').textContent = sel ? serverTitle(sel) : 'Auto · fastest server';
   $('#server-sub').textContent = sel ? serverSub(sel)
-    : `Picks the ${prefs.autoPool} fastest working servers${prefs.country ? ' in ' + prefs.country : ''} and switches automatically`;
+    : `Free · uses the fastest working server${prefs.country ? ' in ' + prefs.country : ''}, backups take over automatically`;
 
   renderServers();
   renderSites();
@@ -107,19 +112,21 @@ function renderServers() {
     .filter((s) => !q || `${s.name} ${s.address} ${s.sni} ${s.country} ${s.proto} ${s.net}`.toLowerCase().includes(q))
     .sort((a, b) => score(a) - score(b));
 
-  const tested = servers.filter((s) => pings[s.id]);
-  const working = tested.filter((s) => pings[s.id].ms != null);
-  $('#test-info').textContent = S.testing ? 'Testing servers… this can take up to a minute.'
-    : tested.length ? `${working.length} of ${tested.length} tested servers are working. Fastest first.`
-      : servers.length ? 'Tip: run a speed test so Auto mode can pick the fastest servers.' : '';
-  $('#test').disabled = S.testing || !servers.length;
-  $('#test').textContent = S.testing ? 'Testing…' : 'Test speed of all servers';
+  const fs = S.freeStatus || {};
+  const busyTest = S.testing || S.refreshing || fs.state === 'loading' || fs.state === 'testing';
+  $('#test-info').textContent = fs.state === 'loading' ? 'Downloading free server lists…'
+    : fs.state === 'testing' ? `Testing ${fs.found || ''} free servers… ${fs.progress || 0}%`
+      : fs.error ? fs.error
+        : fs.at ? `${fs.working} fast free servers found (checked ${fs.found}). Updated ${new Date(fs.at).toLocaleTimeString()} · refreshes every 30 min.`
+          : 'Free servers are being prepared…';
+  $('#test').disabled = busyTest;
+  $('#test').textContent = busyTest ? 'Searching…' : 'Find fastest free servers';
 
   const limit = showAll ? list.length : 60;
   const rows = [`
     <div class="srv ${prefs.selected === 'auto' ? 'selected' : ''}" data-id="auto">
       <span class="flag">⚡</span>
-      <div class="info"><div class="name">Auto · fastest server</div><div class="sub">Recommended — switches to the fastest working server</div></div>
+      <div class="info"><div class="name">Auto · fastest free server</div><div class="sub">Recommended — no setup, switches automatically</div></div>
     </div>`];
   for (const s of list.slice(0, limit)) {
     rows.push(`
@@ -130,9 +137,8 @@ function renderServers() {
     </div>`);
   }
   if (list.length > limit) rows.push(`<button class="btn ghost more" id="show-all">Show all ${list.length} servers</button>`);
-  if (!servers.length) rows.push('<p class="muted small center">No servers yet — open “Add servers” below and import your list.</p>');
+  if (!servers.length) rows.push('<p class="muted small center">Finding free servers for you… this takes about 30 seconds the first time.</p>');
   $('#server-list').innerHTML = rows.join('');
-  $('#import-box').open = $('#import-box').open || !servers.length;
 
   $('#sources').innerHTML = S.sources.map((src) => `
     <div class="source">
@@ -175,8 +181,8 @@ async function checkHelper() {
     $('#helper-status').textContent = `Installed ✓ ${r.version || ''}${r.running ? ' · running' : ''}`;
     $('#helper-help').classList.add('hidden');
   } else {
-    $('#helper-status').textContent = r.missing ? 'Not installed' : `Problem: ${r.error}`;
-    $('#helper-help').classList.remove('hidden');
+    $('#helper-status').textContent = r.missing ? 'Not installed (not needed for free servers)' : `Problem: ${r.error}`;
+    $('#helper-help').classList.toggle('hidden', !S.servers.some((s) => s.kind === 'core'));
   }
 }
 
@@ -240,8 +246,8 @@ $('#test').addEventListener('click', async () => {
   S.testing = true; renderServers();
   try {
     const r = await send('test');
-    if (r.method === 'rough') $('#test-info').textContent = 'Rough test only — install the helper (Settings) for a real speed test.';
-  } catch (e) { alert(e.message); }
+    if (r.ownError) alert('Your own servers were not tested: ' + r.ownError);
+  } catch (e) { $('#test-info').textContent = e.message; return; }
   await refresh();
 });
 
@@ -250,7 +256,7 @@ $('#sub-add').addEventListener('click', async () => {
   if (!url) return;
   $('#import-msg').textContent = 'Downloading…';
   try {
-    const r = await send('addSubscription', { url });
+    const r = await send('addListUrl', { url });
     $('#import-msg').textContent = `Added ${r.added} servers.`;
     $('#sub-url').value = '';
   } catch (e) { $('#import-msg').textContent = e.message; }
@@ -261,7 +267,7 @@ async function importText(text, name) {
   $('#import-msg').textContent = 'Importing…';
   try {
     const r = await send('importText', { text, name });
-    $('#import-msg').textContent = `Added ${r.added} servers${r.skipped ? ` (${r.skipped} unsupported skipped)` : ''}. Now run a speed test.`;
+    $('#import-msg').textContent = `Added ${r.added} servers${r.skipped ? ` (${r.skipped} unsupported skipped)` : ''}.`;
   } catch (e) { $('#import-msg').textContent = e.message; }
   await refresh();
 }
@@ -347,6 +353,7 @@ chrome.storage.onChanged.addListener(() => { if (!busy) refresh(); });
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.url && /^https?:/.test(tab.url) && !isFullPage) currentHost = normalizeSite(new URL(tab.url).hostname);
   } catch { /* no tab */ }
+  send('ensureFree').catch(() => {});
   await refresh();
   const hash = location.hash.slice(1);
   if (hash) showTab(hash);
