@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>OpenGate VPN</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><img src="icons/on32.png" alt=""> OpenGate <span>VPN</span></div>
+    <span class="free">100% free</span>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="home" class="active">Home</button>
+    <button data-tab="servers">Servers</button>
+    <button data-tab="sites">Sites</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+
+  <!-- HOME -->
+  <section id="tab-home" class="tab active">
+    <div class="power-wrap">
+      <button id="power" class="power" title="Connect / disconnect">
+        <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>
+      </button>
+      <div id="state-text" class="state-text">Not connected</div>
+      <div id="state-sub" class="state-sub"></div>
+    </div>
+
+    <div id="error" class="alert hidden"></div>
+    <div id="warning" class="alert warn hidden"></div>
+
+    <label class="label">Which sites use the VPN?</label>
+    <div class="segmented" id="mode">
+      <button data-mode="full">All sites</button>
+      <button data-mode="targeted">Only my site list</button>
+    </div>
+
+    <div id="current-site" class="card row hidden">
+      <div>
+        <div class="muted small">This tab</div>
+        <div id="current-host" class="strong"></div>
+      </div>
+      <button id="toggle-current" class="btn small"></button>
+    </div>
+
+    <label class="label">Server</label>
+    <button id="server-pick" class="card row server-pick">
+      <span id="server-flag" class="flag">⚡</span>
+      <span class="grow">
+        <span id="server-name" class="strong">Auto · fastest server</span>
+        <span id="server-sub" class="muted small block"></span>
+      </span>
+      <span class="chev">›</span>
+    </button>
+
+    <div class="row gap">
+      <button id="check-ip" class="btn ghost grow">Check my IP</button>
+    </div>
+    <div id="ip-result" class="muted small center"></div>
+  </section>
+
+  <!-- SERVERS -->
+  <section id="tab-servers" class="tab">
+    <div class="row gap">
+      <input id="search" type="search" placeholder="Search country, host…" class="grow">
+      <select id="country-filter"></select>
+    </div>
+    <div class="row gap">
+      <button id="test" class="btn primary grow">Test speed of all servers</button>
+    </div>
+    <div id="test-info" class="muted small center"></div>
+
+    <div id="server-list" class="list"></div>
+
+    <details id="import-box" class="card">
+      <summary class="strong">Add servers</summary>
+      <label class="label">Subscription URL (auto-updates every hour)</label>
+      <div class="row gap">
+        <input id="sub-url" type="url" placeholder="https://…" class="grow">
+        <button id="sub-add" class="btn">Add</button>
+      </div>
+      <label class="label">Or paste links (vless://, vmess://, trojan://, ss://, socks://…)</label>
+      <textarea id="paste" rows="3" placeholder="Paste server links or a subscription file here"></textarea>
+      <div class="row gap">
+        <button id="paste-import" class="btn grow">Import text</button>
+        <label class="btn grow file-btn">Import file…<input id="file" type="file" accept=".txt,.conf,text/plain"></label>
+      </div>
+      <div id="import-msg" class="muted small"></div>
+      <div id="sources"></div>
+    </details>
+  </section>
+
+  <!-- SITES -->
+  <section id="tab-sites" class="tab">
+    <p class="muted small">In <b>“Only my site list”</b> mode, just these sites go through the VPN. Everything else uses your normal connection (faster, and your local sites keep working). Subdomains are included.</p>
+    <div class="row gap">
+      <input id="site-input" placeholder="example.com" class="grow">
+      <button id="site-add" class="btn primary">Add</button>
+    </div>
+    <button id="site-add-current" class="btn ghost full">+ Add the site in this tab</button>
+
+    <label class="label">Quick add</label>
+    <div id="presets" class="chips"></div>
+
+    <label class="label">Your list <span id="site-count" class="muted"></span></label>
+    <div id="site-list" class="list sites"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-settings" class="tab">
+    <div class="card">
+      <div class="row">
+        <div class="grow">
+          <div class="strong">Helper (Xray core)</div>
+          <div id="helper-status" class="muted small">Checking…</div>
+        </div>
+        <button id="helper-check" class="btn small">Recheck</button>
+      </div>
+      <div id="helper-help" class="small hidden">
+        <p>VLESS / Trojan / VMess servers need a small free helper on your computer (one-time setup, about 1 minute). It runs <b>Xray-core</b> and the extension controls it for you.</p>
+        <p><b>Windows</b> – in PowerShell, from the downloaded <code>helper</code> folder:</p>
+        <code class="block">powershell -ExecutionPolicy Bypass -File install_windows.ps1</code>
+        <p><b>macOS / Linux</b> – in Terminal:</p>
+        <code class="block">bash install.sh</code>
+        <p class="muted">Then click “Recheck”. See README for details.</p>
+      </div>
+    </div>
+
+    <label class="label">Auto mode: balance between the fastest</label>
+    <select id="auto-pool">
+      <option value="1">1 server</option>
+      <option value="3">3 servers</option>
+      <option value="5">5 servers</option>
+      <option value="8">8 servers</option>
+      <option value="12">12 servers</option>
+    </select>
+
+    <label class="label">Auto mode: country</label>
+    <select id="auto-country"></select>
+
+    <label class="label">Local ports (SOCKS / HTTP)</label>
+    <div class="row gap">
+      <input id="socks-port" type="number" min="1024" max="65535" class="grow">
+      <input id="http-port" type="number" min="1024" max="65535" class="grow">
+    </div>
+
+    <label class="check"><input id="manual-core" type="checkbox"> I run Xray / v2rayN / sing-box myself (don't use the helper)</label>
+    <button id="export" class="btn ghost full">Download Xray config</button>
+  </section>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

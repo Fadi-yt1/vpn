@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "OpenGate VPN",
+  "short_name": "OpenGate",
+  "version": "1.0.0",
+  "description": "Free VPN for your browser. Use fast VLESS/VMess/Trojan/Shadowsocks servers for all sites, or only for the sites you choose.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtuVQILJJX2QBE7OwbEQ/FMxpu+2RyCXxtkBF86+dwNIQ9ZR1nqZPiBevXhpvFIT6OlbBfFlcqA1EdXICSIK4yPuUgOJJH8wWY4+/VnUaTf+rHrfXh50WDRfBu2lJLP2gDKScxG1oXDiH9pqTwAbOhws0KoVHtWdakchilcTUB91giKrVtlDTPF2motmXrnIyXHEooDZ+r75KasbKaucdPOIFAcI98kTLMfETwYIVPndQoqjGUAInSlxJf+jAla9yzsrpsPlKkR1YnkCMTeWjF8psW34qaQkuRpQKcP41I8Pqf3TD4mTUdrx9rbZ+16Q8PEyQ0MlRCack5LgpQSpgyQIDAQAB",
+  "minimum_chrome_version": "110",
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "OpenGate VPN",
+    "default_icon": { "16": "icons/off16.png", "32": "icons/off32.png", "48": "icons/off48.png" }
+  },
+  "icons": { "16": "icons/on16.png", "32": "icons/on32.png", "48": "icons/on48.png", "128": "icons/on128.png" },
+  "permissions": [
+    "proxy",
+    "storage",
+    "alarms",
+    "tabs",
+    "nativeMessaging",
+    "webRequest",
+    "webRequestAuthProvider"
+  ],
+  "host_permissions": ["<all_urls>"]
+}
