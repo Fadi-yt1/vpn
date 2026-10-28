@@ -298,3 +298,18 @@ p { margin: 0 0 8px; }
 .proxio-card #proxio-status { margin-top: 8px; min-height: 16px; }
 .proxio-card #proxio-status.err { color: #ffb3bd; }
 .proxio-card #proxio-status.ok { color: var(--green); }
+
+.custom-card textarea { margin-top: 10px; }
+.custom-card #custom-status { margin-top: 8px; min-height: 16px; }
+.custom-card #custom-status.err { color: #ffb3bd; }
+.custom-card #custom-status.ok { color: var(--green); }
+.custom-card .list { margin-top: 8px; }
+.custom-card .srv { cursor: default; padding: 8px 10px; }
+.small-seg { margin-top: 0; }
+.small-seg button { padding: 6px 8px; font-size: 12px; }
+#int-proxy { margin-top: 8px; }
+.code {
+  margin: 8px 0 0; padding: 10px 12px; border-radius: 11px; background: rgba(0,0,0,.35); border: 1px solid var(--border);
+  font: 11px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; color: #d9dcff;
+  white-space: pre-wrap; word-break: break-all; max-height: 170px; overflow: auto; user-select: text;
+}

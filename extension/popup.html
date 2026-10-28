@@ -156,7 +156,32 @@
           <option value="free">Free public servers (no setup)</option>
           <option value="proxio">Proxio.io servers (your API key)</option>
           <option value="both">Proxio.io + free servers</option>
+          <option value="custom">My proxies (curl / Python / Node.js)</option>
         </select>
+
+        <div class="card custom-card">
+          <div class="strong">My proxies</div>
+          <div class="muted tiny">Paste your proxy as a curl command, Python or Node.js code, a proxy URL, or a provider list (ip:port:user:pass). Webshare and similar providers work.</div>
+          <textarea id="custom-input" rows="3" spellcheck="false" autocomplete="off" placeholder='curl --proxy "http://user:pass@1.2.3.4:6014/" https://ipv4.webshare.io/'></textarea>
+          <div class="row gap">
+            <button id="custom-save" class="btn primary grow">Add &amp; test</button>
+            <button id="custom-test" class="btn hidden">Test again</button>
+          </div>
+          <div id="custom-status" class="muted tiny"></div>
+          <div id="custom-list" class="list"></div>
+
+          <div id="int-box" class="hidden">
+            <div class="label label-row"><span>Integration code</span><button id="int-show" class="link">Show password</button></div>
+            <div class="segmented small-seg" id="int-tabs">
+              <button data-lang="curl" class="active">cURL</button>
+              <button data-lang="python">Python</button>
+              <button data-lang="node">Node.js</button>
+            </div>
+            <select id="int-proxy" class="hidden"></select>
+            <pre id="int-code" class="code"></pre>
+            <button id="int-copy" class="btn full">Copy code</button>
+          </div>
+        </div>
 
         <div class="card proxio-card">
           <div class="row gap0">

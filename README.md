@@ -33,6 +33,19 @@ The extension sets your browser's proxy rules. To test hundreds of servers quick
 
 [VPN Gate](https://www.vpngate.net/) and similar free VPN sites hand out **OpenVPN / L2TP / SSTP / WireGuard** servers. Browsers can't connect to those, and Chrome extensions aren't allowed to run VPN software, so no browser extension can use them. Use the official VPN Gate client (or OpenVPN) for those. This extension uses free **SOCKS5 and HTTP proxies**, which is what a browser can use directly.
 
+## Optional: My proxies (curl / Python / Node.js integration)
+
+Have a proxy from Webshare or another provider? Open **Settings → My proxies**, paste it **in any form**, and press **Add & test**:
+
+- a curl command: `curl --proxy "http://user:pass@1.2.3.4:6014/" https://ipv4.webshare.io/`
+- Python code: `proxies = {"http": "http://user:pass@1.2.3.4:6014/", ...}`
+- Node.js code: `new HttpsProxyAgent('http://user:pass@1.2.3.4:6014')` or an axios `proxy: { host, port, auth }` object
+- a proxy URL, or a provider list with one `ip:port:user:pass` per line
+
+Tervyn finds the proxies, tests them, and switches **Server source** to *My proxies*. HTTP proxies with a username and password work: Tervyn answers the login for you. Below the list, **Integration code** shows ready-to-copy cURL, Python and Node.js code for each proxy. The password is hidden on screen, and **Copy** gives the full working code.
+
+Chrome can't log in to password-protected **SOCKS5** proxies. Use the HTTP version of your proxy (providers usually offer both). Your proxies and their logins are stored only in your browser.
+
 ## Optional: Proxio.io servers (your API key)
 
 If you have a [Proxio.io](https://proxio.io) account, Tervyn can use its servers instead of (or together with) the free ones:
@@ -82,6 +95,7 @@ Tip: some sites load videos or images from other domains, for example YouTube us
 ```bash
 node tests/freeproxies.mjs                 # free server list parser
 node tests/proxio.mjs                      # Proxio.io response parser
+node tests/integration.mjs                 # My proxies: curl / Python / Node.js reader + code snippets
 node tests/check.mjs path/to/servers.txt   # parse your own server list + build a config + check site routing
 ```
 

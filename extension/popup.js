@@ -1,5 +1,6 @@
 import { PRESETS } from './lib/presets.js';
 import { normalizeSite } from './lib/pac.js';
+import { integrationCode } from './lib/integration.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -10,6 +11,9 @@ let S = null;          // last state from background
 let busy = false;
 let showAll = false;   // server list paging
 let currentHost = '';
+let intLang = 'curl';   // integration code tab
+let intShow = false;   // show the password in the code
+let intId = '';        // which of my proxies the code is for
 
 async function send(type, extra = {}) {
   const res = await chrome.runtime.sendMessage({ type, ...extra });
@@ -28,6 +32,7 @@ function serverTitle(s) {
 function serverSub(s) {
   if (s.free) return `Free · ${s.proto.toUpperCase()} · ${s.address}:${s.port}`;
   if (s.proxio) return `Proxio.io · ${s.proto.toUpperCase()} · ${s.address}:${s.port}`;
+  if (s.custom) return `My proxy · ${s.proto.toUpperCase()} · ${s.address}:${s.port}${s.username ? ' · login' : ''}`;
   const net = s.kind === 'direct' ? 'proxy' : (s.net === 'raw' ? 'tcp' : s.net);
   const sec = s.security && s.security !== 'none' ? `+${s.security}` : '';
   return `${s.proto.toUpperCase()} · ${net}${sec} · ${s.address}:${s.port}`;
@@ -120,7 +125,7 @@ function render() {
   $('#server-name').textContent = active ? (place ? `${place}` : active.name) : 'Fastest available';
   $('#server-sub').textContent = active
     ? (on ? sp.text : serverSub(active))
-    : `Auto · picks the fastest ${prefs.source === 'proxio' ? 'Proxio.io' : prefs.source === 'both' ? '' : 'free '}server${prefs.country ? ' in ' + prefs.country : ''}`.replace('fastest  ', 'fastest ');
+    : `Auto · picks the fastest ${prefs.source === 'proxio' ? 'Proxio.io ' : prefs.source === 'custom' ? 'of your ' : prefs.source === 'both' ? '' : 'free '}${prefs.source === 'custom' ? 'proxies' : 'server'}${prefs.country ? ' in ' + prefs.country : ''}`;
   const sig = $('#server-ping');
   sig.classList.toggle('hidden', !(active && ms != null));
   sig.className = `signal ${sp.cls}${active && ms != null ? '' : ' hidden'}`;
@@ -160,7 +165,8 @@ function renderServers() {
   const score = (s) => { const p = pings[s.id]; return !p ? 5e4 : p.ms == null ? 1e5 : p.ms; };
   const src = prefs.source || 'free';
   const list = servers
-    .filter((s) => (src === 'proxio' ? !s.free : src === 'free' ? !s.proxio : true))
+    .filter((s) => (src === 'custom' ? s.custom || (!s.free && !s.proxio)
+      : src === 'proxio' ? !s.free && !s.custom : src === 'free' ? !s.proxio && !s.custom : !s.custom))
     .filter((s) => !cf || s.country === cf)
     .filter((s) => !q || `${s.name} ${s.address} ${s.sni} ${s.country} ${s.proto} ${s.net}`.toLowerCase().includes(q))
     .sort((a, b) => score(a) - score(b));
@@ -174,6 +180,13 @@ function renderServers() {
           : 'Free servers are being prepared…';
   $('#test').disabled = busyTest;
   $('#test').textContent = busyTest ? 'Searching…' : 'Find fastest free servers';
+  if (src === 'custom') {
+    const c = S.custom || {};
+    const b = c.busy || c.state === 'testing';
+    $('#test').disabled = b;
+    $('#test').textContent = b ? 'Testing…' : 'Test my proxies again';
+    $('#test-info').textContent = c.error ? c.error : c.at ? `${c.working} of ${c.total} of your proxies working · tested ${new Date(c.at).toLocaleTimeString()}` : 'Add your proxy in Settings → My proxies.';
+  }
   if (src === 'proxio') {
     const px = S.proxio || {};
     const b = px.busy || px.state === 'loading' || px.state === 'testing';
@@ -189,7 +202,7 @@ function renderServers() {
   const rows = [`
     <div class="srv ${prefs.selected === 'auto' ? 'selected' : ''}" data-id="auto">
       <span class="flag auto"><svg class="bolt"><use href="#i-bolt"/></svg></span>
-      <div class="info"><div class="name">Fastest available</div><div class="sub">${src === 'proxio' ? 'Fastest of your Proxio.io servers' : 'Recommended — no setup, switches automatically'}</div></div>
+      <div class="info"><div class="name">Fastest available</div><div class="sub">${src === 'proxio' ? 'Fastest of your Proxio.io servers' : src === 'custom' ? 'Fastest of your own proxies' : 'Recommended — no setup, switches automatically'}</div></div>
     </div>`];
   for (const s of list.slice(0, limit)) {
     rows.push(`
@@ -238,6 +251,8 @@ function renderSettings() {
   $('#manual-core').checked = prefs.manualCore;
   if (document.activeElement !== $('#server-source')) $('#server-source').value = prefs.source || 'free';
 
+  renderCustom();
+
   // Proxio.io card
   const px = S.proxio || {};
   const keyBox = $('#proxio-key');
@@ -257,6 +272,43 @@ function renderSettings() {
       : px.error ? px.error
         : px.at ? `${px.working} of ${px.fetched} Proxio.io servers working${px.skipped ? ` (${px.skipped} password SOCKS5 skipped)` : ''} · updated ${new Date(px.at).toLocaleTimeString()}`
           : px.hasKey ? 'Key saved.' : '';
+}
+
+function renderCustom() {
+  const mine = S.servers.filter((s) => s.custom);
+  const c = S.custom || {};
+  const busyC = c.busy || c.state === 'testing';
+  $('#custom-save').disabled = busyC;
+  $('#custom-save').textContent = busyC ? 'Testing…' : mine.length ? 'Add & test (replaces list)' : 'Add & test';
+  $('#custom-test').classList.toggle('hidden', !mine.length);
+  $('#custom-test').disabled = busyC;
+  const st = $('#custom-status');
+  st.className = 'muted tiny' + (c.error && !busyC ? ' err' : c.working ? ' ok' : '');
+  st.textContent = busyC ? 'Testing your proxies…'
+    : c.error ? c.error
+      : c.at ? `${c.working} of ${c.total} working · tested ${new Date(c.at).toLocaleTimeString()}` : '';
+  $('#custom-list').innerHTML = mine.map((s) => `
+    <div class="srv">
+      <span class="flag">${s.flag}</span>
+      <div class="info"><div class="name">${esc(s.address)}:${s.port}</div><div class="sub">${esc(s.proto.toUpperCase())}${s.username ? ' · user ' + esc(s.username) : ''}${s.country !== 'Unknown' ? ' · ' + esc(s.country) : ''}</div></div>
+      ${pingBadge(S.pings[s.id])}
+      <button class="x" data-remove-custom="${s.id}" title="Remove this proxy">×</button>
+    </div>`).join('');
+
+  // Integration code
+  $('#int-box').classList.toggle('hidden', !mine.length);
+  if (!mine.length) return;
+  if (!mine.some((s) => s.id === intId)) intId = mine[0].id;
+  const sel = $('#int-proxy');
+  sel.classList.toggle('hidden', mine.length < 2);
+  const opts = mine.map((s) => `<option value="${s.id}">${esc(s.address)}:${s.port}${s.username ? ' (' + esc(s.username) + ')' : ''}</option>`).join('');
+  if (sel.dataset.html !== opts) { sel.innerHTML = opts; sel.dataset.html = opts; }
+  sel.value = intId;
+  $$('#int-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.lang === intLang));
+  const server = mine.find((s) => s.id === intId);
+  $('#int-code').textContent = integrationCode(server, intLang, { hide: !intShow });
+  $('#int-show').textContent = intShow ? 'Hide password' : 'Show password';
+  $('#int-show').classList.toggle('hidden', !server.username);
 }
 
 async function refresh() {
@@ -438,7 +490,13 @@ for (const id of ['socks-port', 'http-port']) {
 $('#manual-core').addEventListener('change', (e) => savePref({ manualCore: e.target.checked }));
 $('#server-source').addEventListener('change', (e) => {
   const source = e.target.value;
-  if (source !== 'free' && !S.proxio?.hasKey) {
+  if (source === 'custom' && !S.servers.some((s) => s.custom)) {
+    alert('Paste your proxy under "My proxies" below and press "Add & test" first.');
+    e.target.value = S.prefs.source || 'free';
+    $('#custom-input').focus();
+    return;
+  }
+  if ((source === 'proxio' || source === 'both') && !S.proxio?.hasKey) {
     alert('Add your Proxio.io API key below first, then press "Save & load servers".');
     e.target.value = S.prefs.source || 'free';
     $('#proxio-key').focus();
@@ -456,6 +514,46 @@ $('#proxio-save').addEventListener('click', async () => {
     $('#proxio-key').value = '';
   } catch (e) { /* the error is shown in the status line */ }
   await refresh();
+});
+$('#custom-save').addEventListener('click', async () => {
+  const text = $('#custom-input').value;
+  if (!text.trim()) { alert('Paste your proxy first, e.g. curl --proxy "http://user:pass@1.2.3.4:6014/" https://ipv4.webshare.io/'); return; }
+  try {
+    await send('customSave', { text });
+    $('#custom-input').value = '';
+  } catch (e) {
+    $('#custom-status').className = 'muted tiny err';
+    $('#custom-status').textContent = e.message;
+    return;
+  }
+  await refresh();
+});
+$('#custom-test').addEventListener('click', async () => {
+  try { await send('customTest'); } catch { /* shown in status */ }
+  await refresh();
+});
+$('#custom-list').addEventListener('click', async (e) => {
+  const id = e.target.closest('button')?.dataset.removeCustom;
+  if (!id) return;
+  await send('customRemove', { id });
+  await refresh();
+});
+$('#int-tabs').addEventListener('click', (e) => {
+  const lang = e.target.closest('button')?.dataset.lang;
+  if (lang) { intLang = lang; renderCustom(); }
+});
+$('#int-proxy').addEventListener('change', (e) => { intId = e.target.value; renderCustom(); });
+$('#int-show').addEventListener('click', () => { intShow = !intShow; renderCustom(); });
+$('#int-copy').addEventListener('click', async () => {
+  const server = S.servers.find((s) => s.id === intId);
+  if (!server) return;
+  try {
+    await navigator.clipboard.writeText(integrationCode(server, intLang)); // always the real password
+    $('#int-copy').textContent = 'Copied ✓';
+  } catch {
+    $('#int-copy').textContent = 'Copy failed — select the code and copy it';
+  }
+  setTimeout(() => { $('#int-copy').textContent = 'Copy code'; }, 1800);
 });
 $('#proxio-refresh').addEventListener('click', async () => {
   try { await send('proxioRefresh'); } catch { /* shown in status */ }
