@@ -27,6 +27,7 @@ function serverTitle(s) {
 }
 function serverSub(s) {
   if (s.free) return `Free · ${s.proto.toUpperCase()} · ${s.address}:${s.port}`;
+  if (s.proxio) return `Proxio.io · ${s.proto.toUpperCase()} · ${s.address}:${s.port}`;
   const net = s.kind === 'direct' ? 'proxy' : (s.net === 'raw' ? 'tcp' : s.net);
   const sec = s.security && s.security !== 'none' ? `+${s.security}` : '';
   return `${s.proto.toUpperCase()} · ${net}${sec} · ${s.address}:${s.port}`;
@@ -119,7 +120,7 @@ function render() {
   $('#server-name').textContent = active ? (place ? `${place}` : active.name) : 'Fastest available';
   $('#server-sub').textContent = active
     ? (on ? sp.text : serverSub(active))
-    : `Auto · picks the fastest free server${prefs.country ? ' in ' + prefs.country : ''}`;
+    : `Auto · picks the fastest ${prefs.source === 'proxio' ? 'Proxio.io' : prefs.source === 'both' ? '' : 'free '}server${prefs.country ? ' in ' + prefs.country : ''}`.replace('fastest  ', 'fastest ');
   const sig = $('#server-ping');
   sig.classList.toggle('hidden', !(active && ms != null));
   sig.className = `signal ${sp.cls}${active && ms != null ? '' : ' hidden'}`;
@@ -157,7 +158,9 @@ function renderServers() {
   const q = $('#search').value.trim().toLowerCase();
   const cf = $('#country-filter').value;
   const score = (s) => { const p = pings[s.id]; return !p ? 5e4 : p.ms == null ? 1e5 : p.ms; };
+  const src = prefs.source || 'free';
   const list = servers
+    .filter((s) => (src === 'proxio' ? !s.free : src === 'free' ? !s.proxio : true))
     .filter((s) => !cf || s.country === cf)
     .filter((s) => !q || `${s.name} ${s.address} ${s.sni} ${s.country} ${s.proto} ${s.net}`.toLowerCase().includes(q))
     .sort((a, b) => score(a) - score(b));
@@ -171,12 +174,22 @@ function renderServers() {
           : 'Free servers are being prepared…';
   $('#test').disabled = busyTest;
   $('#test').textContent = busyTest ? 'Searching…' : 'Find fastest free servers';
+  if (src === 'proxio') {
+    const px = S.proxio || {};
+    const b = px.busy || px.state === 'loading' || px.state === 'testing';
+    $('#test').disabled = b;
+    $('#test').textContent = b ? 'Loading…' : 'Reload Proxio.io servers';
+    $('#test-info').textContent = px.state === 'testing' ? `Testing ${px.fetched || ''} Proxio.io servers…`
+      : px.error ? px.error
+        : px.at ? `${px.working} Proxio.io servers working · updated ${new Date(px.at).toLocaleTimeString()}`
+          : 'Add your Proxio.io API key in Settings.';
+  }
 
   const limit = showAll ? list.length : 60;
   const rows = [`
     <div class="srv ${prefs.selected === 'auto' ? 'selected' : ''}" data-id="auto">
       <span class="flag auto"><svg class="bolt"><use href="#i-bolt"/></svg></span>
-      <div class="info"><div class="name">Fastest available</div><div class="sub">Recommended — no setup, switches automatically</div></div>
+      <div class="info"><div class="name">Fastest available</div><div class="sub">${src === 'proxio' ? 'Fastest of your Proxio.io servers' : 'Recommended — no setup, switches automatically'}</div></div>
     </div>`];
   for (const s of list.slice(0, limit)) {
     rows.push(`
@@ -223,6 +236,27 @@ function renderSettings() {
   if (document.activeElement !== $('#socks-port')) $('#socks-port').value = prefs.socksPort;
   if (document.activeElement !== $('#http-port')) $('#http-port').value = prefs.httpPort;
   $('#manual-core').checked = prefs.manualCore;
+  if (document.activeElement !== $('#server-source')) $('#server-source').value = prefs.source || 'free';
+
+  // Proxio.io card
+  const px = S.proxio || {};
+  const keyBox = $('#proxio-key');
+  if (document.activeElement !== keyBox && !keyBox.value) keyBox.placeholder = px.hasKey ? `Key saved (${px.keyHint})` : 'Paste your Proxio.io API key';
+  if (document.activeElement !== $('#proxio-type')) $('#proxio-type').value = px.type || 'socks5';
+  if (document.activeElement !== $('#proxio-limit')) $('#proxio-limit').value = String(px.limit || 50);
+  $('#proxio-refresh').classList.toggle('hidden', !px.hasKey);
+  $('#proxio-remove').classList.toggle('hidden', !px.hasKey);
+  const busyP = px.busy || px.state === 'loading' || px.state === 'testing';
+  $('#proxio-save').disabled = busyP;
+  $('#proxio-refresh').disabled = busyP;
+  $('#proxio-save').textContent = busyP ? 'Loading…' : px.hasKey ? 'Save & reload' : 'Save & load servers';
+  const stEl = $('#proxio-status');
+  stEl.className = 'muted tiny' + (px.error && !busyP ? ' err' : px.working ? ' ok' : '');
+  stEl.textContent = px.state === 'loading' ? 'Downloading your Proxio.io servers…'
+    : px.state === 'testing' ? `Testing ${px.fetched || ''} Proxio.io servers…`
+      : px.error ? px.error
+        : px.at ? `${px.working} of ${px.fetched} Proxio.io servers working${px.skipped ? ` (${px.skipped} password SOCKS5 skipped)` : ''} · updated ${new Date(px.at).toLocaleTimeString()}`
+          : px.hasKey ? 'Key saved.' : '';
 }
 
 async function refresh() {
@@ -402,6 +436,37 @@ for (const id of ['socks-port', 'http-port']) {
   });
 }
 $('#manual-core').addEventListener('change', (e) => savePref({ manualCore: e.target.checked }));
+$('#server-source').addEventListener('change', (e) => {
+  const source = e.target.value;
+  if (source !== 'free' && !S.proxio?.hasKey) {
+    alert('Add your Proxio.io API key below first, then press "Save & load servers".');
+    e.target.value = S.prefs.source || 'free';
+    $('#proxio-key').focus();
+    return;
+  }
+  savePref({ source, selected: 'auto' });
+});
+$('#proxio-save').addEventListener('click', async () => {
+  const key = $('#proxio-key').value.trim();
+  if (!key && !S.proxio?.hasKey) { alert('Paste your Proxio.io API key first.'); return; }
+  const type = $('#proxio-type').value;
+  const limit = Number($('#proxio-limit').value);
+  try {
+    await send('proxioSave', { key, proxyType: type, limit });
+    $('#proxio-key').value = '';
+  } catch (e) { /* the error is shown in the status line */ }
+  await refresh();
+});
+$('#proxio-refresh').addEventListener('click', async () => {
+  try { await send('proxioRefresh'); } catch { /* shown in status */ }
+  await refresh();
+});
+$('#proxio-remove').addEventListener('click', async () => {
+  if (!confirm('Remove your Proxio.io key and its servers?')) return;
+  await send('proxioRemove');
+  $('#proxio-key').value = '';
+  await refresh();
+});
 $('#export').addEventListener('click', async () => {
   try {
     const cfg = await send('exportConfig');

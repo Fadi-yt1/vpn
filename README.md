@@ -33,6 +33,16 @@ The extension sets your browser's proxy rules. To test hundreds of servers quick
 
 [VPN Gate](https://www.vpngate.net/) and similar free VPN sites hand out **OpenVPN / L2TP / SSTP / WireGuard** servers. Browsers can't connect to those, and Chrome extensions aren't allowed to run VPN software, so no browser extension can use them. Use the official VPN Gate client (or OpenVPN) for those. This extension uses free **SOCKS5 and HTTP proxies**, which is what a browser can use directly.
 
+## Optional: Proxio.io servers (your API key)
+
+If you have a [Proxio.io](https://proxio.io) account, Tervyn can use its servers instead of (or together with) the free ones:
+
+1. Open **Settings**, paste your API key under **Proxio.io API key**, choose **SOCKS5**, **HTTP** or both, and press **Save & load servers**.
+2. Tervyn downloads your list (`https://proxio.io/api/list?type=…&limit=…` with the `X-Key` header), tests every server, and switches **Server source** to Proxio.io.
+3. Use **Server source** to choose *Free public servers*, *Proxio.io servers* or *Proxio.io + free servers*.
+
+The key is stored only in your browser and is sent only to proxio.io. Proxio.io servers are re-checked while you're connected and the list reloads every 30 minutes. Chrome can't log in to password-protected **SOCKS5** proxies; if your plan gives those, choose **HTTP** (HTTP proxies with a login work).
+
 ## Optional: your own servers (advanced)
 
 You don't need this. But if you have your own VLESS / VMess / Trojan / Shadowsocks servers (for example a file like `AetrisVPN.txt`), open **Servers → Advanced: add your own servers**.
@@ -71,6 +81,7 @@ Tip: some sites load videos or images from other domains, for example YouTube us
 
 ```bash
 node tests/freeproxies.mjs                 # free server list parser
+node tests/proxio.mjs                      # Proxio.io response parser
 node tests/check.mjs path/to/servers.txt   # parse your own server list + build a config + check site routing
 ```
 

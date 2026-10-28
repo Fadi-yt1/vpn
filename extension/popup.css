@@ -293,3 +293,8 @@ p { margin: 0 0 8px; }
 .label-row { display: flex; align-items: center; justify-content: space-between; }
 .link { background: none; border: 0; padding: 0; color: #b9a8ff; font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: none; cursor: pointer; }
 .link:hover { color: #d4c9ff; text-decoration: underline; }
+
+.proxio-card input { margin-top: 10px; font-family: ui-monospace, "Cascadia Code", monospace; letter-spacing: .04em; }
+.proxio-card #proxio-status { margin-top: 8px; min-height: 16px; }
+.proxio-card #proxio-status.err { color: #ffb3bd; }
+.proxio-card #proxio-status.ok { color: var(--green); }

@@ -2,6 +2,7 @@ import { parseSubscription, hashId } from './lib/links.js';
 import { buildConfig, toOutbound } from './lib/xray.js';
 import { buildPac, proxyString, normalizeSite, IP_CHECK_HOST } from './lib/pac.js';
 import { fetchFreeProxies, addCountries, flagFromCode, countryName } from './lib/freeproxies.js';
+import { fetchProxio } from './lib/proxio.js';
 
 const HOST = 'com.opengate.vpn';
 const HELPER_MISSING = 'Your own VLESS/Trojan servers need the optional helper (Settings). Free servers work without it — pick "Auto".';
@@ -18,6 +19,7 @@ const DEFAULT_PREFS = {
   autoPool: 5,             // how many of the fastest servers auto mode chains/balances
   country: '',             // limit auto mode to one country ('' = any)
   manualCore: false,       // user runs xray themselves (no helper)
+  source: 'free',          // 'free' | 'proxio' (Proxio.io only) | 'both'
   bypass: [],
 };
 
@@ -36,7 +38,11 @@ async function savePrefs(patch) {
 }
 async function getOwnServers() { return (await get('servers')).servers || []; }
 async function getFreeServers() { return (await get('freeServers')).freeServers || []; }
-async function getAllServers() { return [...(await getFreeServers()), ...(await getOwnServers())]; }
+async function getProxioServers() { return (await get('proxioServers')).proxioServers || []; }
+async function getAllServers() { return [...(await getProxioServers()), ...(await getFreeServers()), ...(await getOwnServers())]; }
+async function getProxioConfig() { return (await get('proxio')).proxio || {}; }
+async function getProxioStatus() { return (await get('proxioStatus')).proxioStatus || {}; }
+async function setProxioStatus(patch) { await set({ proxioStatus: { ...(await getProxioStatus()), ...patch } }); }
 async function getSources() { return (await get('sources')).sources || []; }
 async function getPings() { return (await get('pings')).pings || {}; }
 async function getStatus() { return (await get('status')).status || {}; }
@@ -297,16 +303,62 @@ async function healthCheck() {
     if (refreshing || connecting) return;
     const dead = inUse.filter((s) => !res[s.id]);
     if (dead.length) {
-      const free = (await getFreeServers()).filter((s) => !dead.some((d) => d.id === s.id));
-      await set({ freeServers: free });
+      const alive = (s) => !dead.some((d) => d.id === s.id);
+      await set({ freeServers: (await getFreeServers()).filter(alive), proxioServers: (await getProxioServers()).filter(alive) });
       if (!res[inUse[0].id]) await setStatus({ warning: 'A server stopped answering — switched to the next fastest one.' });
       await connect();
+    }
+    if (prefs.source === 'proxio') {
+      const leftP = (await getProxioServers()).filter((s) => pings[s.id]?.ms != null).length;
+      const lastP = (await getProxioStatus()).at || 0;
+      if (leftP < 3 && !proxioRefreshing && Date.now() - lastP > 5 * 60 * 1000) refreshProxio().catch(() => {});
+      return;
     }
     const left = (await getFreeServers()).filter((s) => pings[s.id]?.ms != null).length;
     const lastSearch = (await getFreeStatus()).at || 0;
     if (left < 10 && !refreshing && Date.now() - lastSearch > 5 * 60 * 1000) refreshFree({ force: true }).catch(() => {});
   })();
   try { return await checkingHealth; } finally { checkingHealth = null; }
+}
+
+// ---------- Proxio.io servers (user's API key) ----------
+let proxioRefreshing = null;
+async function refreshProxio() {
+  if (proxioRefreshing) return proxioRefreshing;
+  proxioRefreshing = (async () => {
+    const cfg = await getProxioConfig();
+    if (!cfg.key) return { working: 0 };
+    await setProxioStatus({ state: 'loading', error: '' });
+    try {
+      const list = await fetchProxio(cfg);
+      // Chrome can't log in to SOCKS5 proxies, so those can't be used.
+      const socksWithLogin = list.filter((s) => s.proto === 'socks5' && s.username);
+      const usable = list.filter((s) => !(s.proto === 'socks5' && s.username));
+      if (!usable.length) {
+        throw new Error(socksWithLogin.length
+          ? `Proxio.io sent ${socksWithLogin.length} SOCKS5 servers that need a password. Chrome can't use password-protected SOCKS5 — set the type to HTTP in Settings.`
+          : 'Proxio.io returned no usable servers. Check your plan and the server type.');
+      }
+      await setProxioStatus({ state: 'testing', fetched: list.length });
+      const res = await testProxiesInBrowser(usable);
+      const working = usable.filter((s) => res[s.id]).sort((a, b) => res[a.id].ms - res[b.id].ms)
+        .map((s) => withResult(s, res[s.id]));
+      await addCountries(working);
+      const pings = await getPings();
+      for (const s of usable) pings[s.id] = res[s.id] ? { ms: res[s.id].ms, kind: 'real', at: Date.now() } : { ms: null, kind: 'real', at: Date.now() };
+      await set({ proxioServers: working, pings });
+      const st = { state: 'idle', at: Date.now(), fetched: list.length, working: working.length, skipped: socksWithLogin.length, error: '' };
+      if (!working.length) st.error = `Proxio.io sent ${usable.length} servers, but none answered the speed test. Try again in a few minutes.`;
+      await setProxioStatus(st);
+      const prefs = await getPrefs();
+      if (working.length && prefs.enabled && prefs.source !== 'free' && prefs.selected === 'auto' && !connecting && (await getStatus()).usingFree) connect();
+      return st;
+    } catch (e) {
+      await setProxioStatus({ state: 'idle', at: Date.now(), error: e.message || String(e) });
+      throw e;
+    }
+  })();
+  try { return await proxioRefreshing; } finally { proxioRefreshing = null; }
 }
 
 // ---------- speed test of your own (Xray) servers via the helper ----------
@@ -390,9 +442,28 @@ async function pickServers(prefs) {
     return { servers: (ok.length ? ok : ranked).slice(0, Math.max(1, prefs.autoPool + 3)), core: true };
   }
 
-  // Otherwise: free servers (no setup), plus any plain proxies you added.
-  const freeNow = async () => [...(await getFreeServers()), ...(await getOwnServers()).filter((s) => s.kind === 'direct')]
-    .filter((s) => (pingsNow[s.id]?.ms != null));
+  // Proxio.io servers (with the user's API key).
+  if (prefs.source === 'proxio') {
+    let list = (await getProxioServers()).filter(works);
+    if (!list.length) {
+      await refreshProxio().catch(() => {});
+      const p2 = await getPings();
+      list = (await getProxioServers()).filter((s) => p2[s.id]?.ms != null);
+    }
+    if (!list.length) {
+      const st = await getProxioStatus();
+      throw new Error(st.error || 'No working Proxio.io server right now. Check your API key in Settings, or switch the server source to free servers.');
+    }
+    return { servers: rank(inCountry(list), await getPings()).slice(0, Math.max(2, prefs.autoPool)), core: false };
+  }
+
+  // Otherwise: free servers (no setup), plus any plain proxies you added
+  // (and Proxio.io servers when the source is "both").
+  const useProxio = prefs.source === 'both';
+  const freeNow = async () => [
+    ...(useProxio ? await getProxioServers() : []),
+    ...(await getFreeServers()), ...(await getOwnServers()).filter((s) => s.kind === 'direct'),
+  ].filter((s) => (pingsNow[s.id]?.ms != null));
   let pingsNow = pings;
   let free = await freeNow();
   // Running low: top up in the background (at most every 5 minutes, to avoid endless re-testing).
@@ -547,10 +618,12 @@ chrome.proxy.onProxyError.addListener(async (details) => {
 // Logins for plain HTTP/SOCKS proxies you added that need a username.
 chrome.webRequest.onAuthRequired.addListener(
   (details, callback) => {
-    get('activeDirect').then(({ activeDirect: d }) => {
-      if (details.isProxy && d && d.username) callback({ authCredentials: { username: d.username, password: d.password } });
-      else callback({});
-    });
+    if (!details.isProxy) { callback({}); return; }
+    getAllServers().then((all) => {
+      const c = details.challenger || {};
+      const s = all.find((x) => x.username && x.address === c.host && Number(x.port) === Number(c.port));
+      callback(s ? { authCredentials: { username: s.username, password: s.password } } : {});
+    }).catch(() => callback({}));
   },
   { urls: ['<all_urls>'] },
   ['asyncBlocking'],
@@ -581,7 +654,8 @@ chrome.alarms.onAlarm.addListener(async (a) => {
     await healthCheck().catch(() => {});
   } else if (a.name === 'refresh') {
     await refreshListUrls();
-    await refreshFree({ force: true }).catch(() => {});
+    if ((await getPrefs()).source !== 'free') await refreshProxio().catch(() => {});
+    if ((await getPrefs()).source !== 'proxio') await refreshFree({ force: true }).catch(() => {});
   }
 });
 
@@ -605,23 +679,50 @@ chrome.alarms.onAlarm.addListener(async (a) => {
 
 const handlers = {
   async state() {
-    const [prefs, status, servers, sources, pings, freeStatus] = await Promise.all(
-      [getPrefs(), getStatus(), getAllServers(), getSources(), getPings(), getFreeStatus()]);
-    return { prefs, status, servers, sources, pings, freeStatus, refreshing: !!refreshing, testing: !!testing };
+    const [prefs, status, servers, sources, pings, freeStatus, proxioCfg, proxioStatus] = await Promise.all(
+      [getPrefs(), getStatus(), getAllServers(), getSources(), getPings(), getFreeStatus(), getProxioConfig(), getProxioStatus()]);
+    const proxio = { hasKey: !!proxioCfg.key, keyHint: proxioCfg.key ? '••••' + proxioCfg.key.slice(-4) : '', type: proxioCfg.type || 'socks5', limit: proxioCfg.limit || 50, ...proxioStatus, busy: !!proxioRefreshing };
+    return { prefs, status, servers, sources, pings, freeStatus, proxio, refreshing: !!refreshing, testing: !!testing };
   },
   connect: () => connect(),
   disconnect: () => disconnect(),
   async setPrefs({ patch }) {
     const before = await getPrefs();
     const prefs = await savePrefs(patch);
-    const needsReconnect = prefs.enabled && ['selected', 'country', 'autoPool', 'socksPort', 'httpPort', 'manualCore']
+    const needsReconnect = prefs.enabled && ['selected', 'country', 'autoPool', 'socksPort', 'httpPort', 'manualCore', 'source']
       .some((k) => k in patch && patch[k] !== before[k]);
     if (needsReconnect) await connect();
     else if ('mode' in patch || 'bypass' in patch) await refreshProxyIfOn();
     return prefs;
   },
-  ensureFree: () => { refreshFree().catch(() => {}); return true; },
-  test: () => testAll(),
+  ensureFree: async () => {
+    const prefs = await getPrefs();
+    if (prefs.source !== 'proxio') refreshFree().catch(() => {});
+    return true;
+  },
+  async proxioSave({ key, proxyType, limit }) {
+    const old = await getProxioConfig();
+    const cfg = { key: (key || old.key || '').trim(), type: proxyType || old.type || 'socks5', limit: Number(limit) || old.limit || 50 };
+    if (!cfg.key) throw new Error('Enter your Proxio.io API key first.');
+    await set({ proxio: cfg });
+    const st = await refreshProxio();
+    const prefs = await getPrefs();
+    if (prefs.source === 'free' && st.working) await handlers.setPrefs({ patch: { source: 'proxio', selected: 'auto' } });
+    return st;
+  },
+  proxioRefresh: () => refreshProxio(),
+  async proxioRemove() {
+    await chrome.storage.local.remove(['proxio', 'proxioServers', 'proxioStatus']);
+    const prefs = await getPrefs();
+    if (prefs.source !== 'free') await handlers.setPrefs({ patch: { source: 'free', selected: 'auto' } });
+    return true;
+  },
+  async test() {
+    const prefs = await getPrefs();
+    if (prefs.source === 'proxio') return refreshProxio();
+    if (prefs.source === 'both') await refreshProxio().catch(() => {});
+    return testAll();
+  },
   importText: ({ text, name }) => importText(text, { id: hashId('paste:' + (name || '') + Date.now()), type: 'paste', name }),
   addListUrl: ({ url }) => addListUrl(url),
   removeSource: ({ id }) => removeSource(id),

@@ -151,6 +151,41 @@
 
       <!-- SETTINGS -->
       <section id="tab-settings" class="tab">
+        <label class="label" for="server-source">Server source</label>
+        <select id="server-source">
+          <option value="free">Free public servers (no setup)</option>
+          <option value="proxio">Proxio.io servers (your API key)</option>
+          <option value="both">Proxio.io + free servers</option>
+        </select>
+
+        <div class="card proxio-card">
+          <div class="row gap0">
+            <div class="grow">
+              <div class="strong">Proxio.io API key</div>
+              <div class="muted tiny">Use your own Proxio.io servers. The key stays in this browser and is only sent to proxio.io.</div>
+            </div>
+          </div>
+          <input id="proxio-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your Proxio.io API key">
+          <div class="row gap">
+            <select id="proxio-type" class="grow" title="Server type">
+              <option value="socks5">SOCKS5</option>
+              <option value="http">HTTP</option>
+              <option value="both">SOCKS5 + HTTP</option>
+            </select>
+            <select id="proxio-limit" class="grow" title="How many servers to load">
+              <option value="25">25 servers</option>
+              <option value="50">50 servers</option>
+              <option value="100">100 servers</option>
+            </select>
+          </div>
+          <div class="row gap">
+            <button id="proxio-save" class="btn primary grow">Save &amp; load servers</button>
+            <button id="proxio-refresh" class="btn hidden" title="Load a fresh list">Reload</button>
+            <button id="proxio-remove" class="btn danger hidden" title="Forget the key">Remove</button>
+          </div>
+          <div id="proxio-status" class="muted tiny"></div>
+        </div>
+
         <div class="card">
           <div class="row gap0">
             <div class="grow">
