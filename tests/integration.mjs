@@ -29,3 +29,18 @@ assert.match(integrationCode(s, 'node'), /HttpsProxyAgent\('http:\/\/user1:pa55@
 // round trip: the snippets we generate can be pasted back in
 for (const lang of ['curl', 'python', 'node']) assert.deepEqual(links(integrationCode(s, lang)), ['http://user1:pa55@10.20.30.40:6014'], lang);
 console.log('proxy integration parser: all checks passed');
+
+// ---------- proxy list files ----------
+import { parseProxyListFile } from '../extension/lib/integration.js';
+const L = (t, p) => parseProxyListFile(t, p).servers.map((s) => `${s.proto}://${s.username ? s.username + ':' + s.password + '@' : ''}${s.address}:${s.port}`);
+// Webshare download format (blank first line, Windows line endings)
+assert.deepEqual(L('\r\n10.0.0.1:6014:usr:pw1\r\n10.0.0.2:6641:usr:pw1\r\n'), ['http://usr:pw1@10.0.0.1:6014', 'http://usr:pw1@10.0.0.2:6641']);
+assert.deepEqual(L('10.0.0.1:6014:usr:pw1', 'socks5'), ['socks5://usr:pw1@10.0.0.1:6014']);
+// other layouts
+assert.deepEqual(L('usr:pw:10.0.0.3:8000\nusr:pw@10.0.0.4:8001\n10.0.0.5:8002\nsocks5://a:b@10.0.0.6:1080\n# comment\njunk line'),
+  ['http://usr:pw@10.0.0.3:8000', 'http://usr:pw@10.0.0.4:8001', 'http://10.0.0.5:8002', 'socks5://a:b@10.0.0.6:1080']);
+assert.equal(parseProxyListFile('junk line\nfoo:bar').bad, 2);
+const ls = parseProxyListFile('10.0.0.1:6014:usr:pw1').servers[0];
+assert.ok(ls.list && !ls.custom && ls.sourceId === 'list');
+assert.notEqual(ls.id, extractProxies('http://usr:pw1@10.0.0.1:6014').servers[0].id); // separate from "My proxies"
+console.log('proxy list file parser: all checks passed');

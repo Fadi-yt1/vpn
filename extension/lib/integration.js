@@ -136,3 +136,45 @@ export function integrationCode(s, lang, { hide = false, target = 'https://ipv4.
     '  .catch((err) => console.error(err.message));',
   ].join('\n');
 }
+
+// ---------- proxy list files (.txt) ----------
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+const HOSTNAME = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)+$/i;
+const isHost = (h) => IPV4.test(h) || HOSTNAME.test(h);
+const isPort = (p) => /^\d{1,5}$/.test(p) && +p > 0 && +p < 65536;
+
+// Reads a provider list file (one proxy per line). Understands
+//   ip:port:user:pass   user:pass:ip:port   user:pass@ip:port   ip:port   scheme://...
+// `proto` ('http' | 'socks5') is used for lines without a scheme.
+export function parseProxyListFile(text, proto = 'http') {
+  const servers = [];
+  let bad = 0;
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim().replace(/^﻿/, '');
+    if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+    let o = null;
+    if (/^[a-z0-9]+:\/\//i.test(line)) {
+      const s = extractProxies(line).servers[0];
+      if (s) o = { proto: s.proto, host: s.address, port: s.port, username: s.username, password: s.password };
+    } else if (line.includes('@')) {
+      const at = line.lastIndexOf('@');
+      const [host, port] = line.slice(at + 1).split(':');
+      const [username, ...pw] = line.slice(0, at).split(':');
+      if (isHost(host) && isPort(port)) o = { proto, host, port, username, password: pw.join(':') };
+    } else {
+      const p = line.split(/[:\s,;|]+/);
+      if (p.length >= 2 && isHost(p[0]) && isPort(p[1])) {
+        o = { proto, host: p[0], port: p[1], username: p[2] || '', password: p.slice(3).join(':') };
+      } else if (p.length >= 4 && isHost(p[2]) && isPort(p[3])) {
+        o = { proto, host: p[2], port: p[3], username: p[0], password: p[1] };
+      }
+    }
+    const s = o && makeCustomServer(o);
+    if (!s) { bad++; continue; }
+    // Mark as coming from the list file (kept separately from "My proxies").
+    servers.push({ ...s, id: s.id.replace(/^/, 'l'), sourceId: 'list', source: 'Proxy list', custom: false, list: true });
+  }
+  const unique = new Map();
+  for (const s of servers) if (!unique.has(s.id)) unique.set(s.id, s); // first entry wins
+  return { servers: [...unique.values()], bad };
+}

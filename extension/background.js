@@ -3,7 +3,7 @@ import { buildConfig, toOutbound } from './lib/xray.js';
 import { buildPac, proxyString, normalizeSite, IP_CHECK_HOST } from './lib/pac.js';
 import { fetchFreeProxies, addCountries, flagFromCode, countryName } from './lib/freeproxies.js';
 import { fetchProxio } from './lib/proxio.js';
-import { extractProxies, withCountry } from './lib/integration.js';
+import { extractProxies, withCountry, parseProxyListFile } from './lib/integration.js';
 
 const HOST = 'com.opengate.vpn';
 const HELPER_MISSING = 'Your own VLESS/Trojan servers need the optional helper (Settings). Free servers work without it — pick "Auto".';
@@ -20,7 +20,7 @@ const DEFAULT_PREFS = {
   autoPool: 5,             // how many of the fastest servers auto mode chains/balances
   country: '',             // limit auto mode to one country ('' = any)
   manualCore: false,       // user runs xray themselves (no helper)
-  source: 'free',          // 'free' | 'proxio' (Proxio.io only) | 'both' | 'custom' (My proxies)
+  source: 'free',          // 'free' | 'proxio' (Proxio.io only) | 'both' | 'custom' (My proxies) | 'list' (Proxy list file)
   bypass: [],
 };
 
@@ -40,10 +40,14 @@ async function savePrefs(patch) {
 async function getOwnServers() { return (await get('servers')).servers || []; }
 async function getFreeServers() { return (await get('freeServers')).freeServers || []; }
 async function getProxioServers() { return (await get('proxioServers')).proxioServers || []; }
-async function getCustomServers() { return (await get('customServers')).customServers || []; }
-async function getCustomStatus() { return (await get('customStatus')).customStatus || {}; }
-async function setCustomStatus(patch) { await set({ customStatus: { ...(await getCustomStatus()), ...patch } }); }
-async function getAllServers() { return [...(await getCustomServers()), ...(await getProxioServers()), ...(await getFreeServers()), ...(await getOwnServers())]; }
+// The user's own proxies: kind 'custom' = "My proxies", 'list' = "Proxy list file".
+const USER_KINDS = ['custom', 'list'];
+async function getUserServers(kind) { const k = `${kind}Servers`; return (await get(k))[k] || []; }
+async function getUserStatus(kind) { const k = `${kind}Status`; return (await get(k))[k] || {}; }
+async function setUserStatus(kind, patch) { await set({ [`${kind}Status`]: { ...(await getUserStatus(kind)), ...patch } }); }
+async function getAllServers() {
+  return [...(await getUserServers('custom')), ...(await getUserServers('list')), ...(await getProxioServers()), ...(await getFreeServers()), ...(await getOwnServers())];
+}
 async function getProxioConfig() { return (await get('proxio')).proxio || {}; }
 async function getProxioStatus() { return (await get('proxioStatus')).proxioStatus || {}; }
 async function setProxioStatus(patch) { await set({ proxioStatus: { ...(await getProxioStatus()), ...patch } }); }
@@ -312,9 +316,9 @@ async function healthCheck() {
       if (!res[inUse[0].id]) await setStatus({ warning: 'A server stopped answering — switched to the next fastest one.' });
       await connect();
     }
-    if (prefs.source === 'custom') {
-      const leftC = (await getCustomServers()).filter((s) => pings[s.id]?.ms != null).length;
-      if (!leftC && !customTesting) testCustom().catch(() => {});
+    if (USER_KINDS.includes(prefs.source)) {
+      const leftC = (await getUserServers(prefs.source)).filter((s) => pings[s.id]?.ms != null).length;
+      if (!leftC && !userTesting[prefs.source]) testUser(prefs.source).catch(() => {});
       return;
     }
     if (prefs.source === 'proxio') {
@@ -371,13 +375,13 @@ async function refreshProxio() {
 }
 
 // ---------- My proxies (curl / Python / Node.js integration) ----------
-let customTesting = null;
-async function testCustom() {
-  if (customTesting) return customTesting;
-  customTesting = (async () => {
-    const list = await getCustomServers();
+const userTesting = {};
+async function testUser(kind) {
+  if (userTesting[kind]) return userTesting[kind];
+  userTesting[kind] = (async () => {
+    const list = await getUserServers(kind);
     if (!list.length) return { working: 0, total: 0 };
-    await setCustomStatus({ state: 'testing', error: '' });
+    await setUserStatus(kind, { state: 'testing', error: '', total: list.length });
     try {
       const res = await testProxiesInBrowser(list);
       const pings = await getPings();
@@ -386,25 +390,36 @@ async function testCustom() {
         pings[s.id] = { ms: res[s.id]?.ms ?? null, kind: 'real', at: now };
         return res[s.id]?.code ? withCountry(s, res[s.id].code) : s;
       });
-      await set({ customServers: updated, pings });
+      await set({ [`${kind}Servers`]: updated, pings });
       const working = updated.filter((s) => res[s.id]).length;
       const socksLogin = updated.filter((s) => s.proto === 'socks5' && s.username).length;
       const st = { state: 'idle', at: now, total: updated.length, working, error: '' };
       if (!working) {
         st.error = socksLogin
-          ? 'Chrome can\'t log in to SOCKS5 proxies that need a password. Use the HTTP version of your proxy (most providers offer both).'
-          : 'Your proxy didn\'t answer. Check the address, port, username and password, and that your plan is active.';
+          ? 'Chrome can\'t log in to SOCKS5 proxies that need a password. Use the HTTP version of your proxies (most providers offer both).'
+          : `${updated.length === 1 ? 'Your proxy' : 'None of your proxies'} answered. Check the address, port, username and password, and that your plan is active.`;
       }
-      await setCustomStatus(st);
+      await setUserStatus(kind, st);
       const prefs = await getPrefs();
-      if (working && prefs.enabled && prefs.source === 'custom' && prefs.selected === 'auto' && !connecting && (await getStatus()).usingFree) connect();
+      if (working && prefs.enabled && prefs.source === kind && prefs.selected === 'auto' && !connecting && (await getStatus()).usingFree) connect();
       return st;
     } catch (e) {
-      await setCustomStatus({ state: 'idle', at: Date.now(), error: e.message || String(e) });
+      await setUserStatus(kind, { state: 'idle', at: Date.now(), error: e.message || String(e) });
       throw e;
     }
   })();
-  try { return await customTesting; } finally { customTesting = null; }
+  try { return await userTesting[kind]; } finally { userTesting[kind] = null; }
+}
+
+async function removeUserServer(kind, id) {
+  const left = id ? (await getUserServers(kind)).filter((x) => x.id !== id) : [];
+  await set({ [`${kind}Servers`]: left });
+  if (!left.length) {
+    await chrome.storage.local.remove([`${kind}Status`, `${kind}Info`]);
+    const prefs = await getPrefs();
+    if (prefs.source === kind) await handlers.setPrefs({ patch: { source: 'free', selected: 'auto' } });
+  }
+  return true;
 }
 
 // ---------- speed test of your own (Xray) servers via the helper ----------
@@ -490,17 +505,18 @@ async function pickServers(prefs) {
 
   // My proxies (pasted curl / Python / Node.js / lists). Never thrown away:
   // dead ones are just skipped until the next test.
-  if (prefs.source === 'custom') {
-    const mine = await getCustomServers();
-    if (!mine.length) throw new Error('Add your proxy in Settings → My proxies first.');
+  if (USER_KINDS.includes(prefs.source)) {
+    const kind = prefs.source;
+    const mine = await getUserServers(kind);
+    if (!mine.length) throw new Error(kind === 'list' ? 'Import your proxy list file in Settings → Proxy list file first.' : 'Add your proxy in Settings → My proxies first.');
     let list = mine.filter(works);
     if (!list.length) {
-      await testCustom().catch(() => {});
+      await testUser(kind).catch(() => {});
       const p2 = await getPings();
-      list = (await getCustomServers()).filter((s) => p2[s.id]?.ms != null);
+      list = (await getUserServers(kind)).filter((s) => p2[s.id]?.ms != null);
     }
     if (!list.length) {
-      const st = await getCustomStatus();
+      const st = await getUserStatus(kind);
       throw new Error(st.error || 'None of your proxies answered. Check the address, port, username and password.');
     }
     return { servers: rank(inCountry(list), await getPings()).slice(0, Math.max(2, prefs.autoPool)), core: false };
@@ -749,11 +765,12 @@ chrome.alarms.onAlarm.addListener(async (a) => {
 
 const handlers = {
   async state() {
-    const [prefs, status, servers, sources, pings, freeStatus, proxioCfg, proxioStatus, customStatus] = await Promise.all(
-      [getPrefs(), getStatus(), getAllServers(), getSources(), getPings(), getFreeStatus(), getProxioConfig(), getProxioStatus(), getCustomStatus()]);
-    const custom = { ...customStatus, busy: !!customTesting };
+    const [prefs, status, servers, sources, pings, freeStatus, proxioCfg, proxioStatus, customStatus, listStatus] = await Promise.all(
+      [getPrefs(), getStatus(), getAllServers(), getSources(), getPings(), getFreeStatus(), getProxioConfig(), getProxioStatus(), getUserStatus('custom'), getUserStatus('list')]);
+    const custom = { ...customStatus, busy: !!userTesting.custom };
+    const list = { ...((await get('listInfo')).listInfo || {}), ...listStatus, busy: !!userTesting.list };
     const proxio = { hasKey: !!proxioCfg.key, keyHint: proxioCfg.key ? '••••' + proxioCfg.key.slice(-4) : '', type: proxioCfg.type || 'socks5', limit: proxioCfg.limit || 50, ...proxioStatus, busy: !!proxioRefreshing };
-    return { prefs, status, servers, sources, pings, freeStatus, proxio, custom, refreshing: !!refreshing, testing: !!testing };
+    return { prefs, status, servers, sources, pings, freeStatus, proxio, custom, list, refreshing: !!refreshing, testing: !!testing };
   },
   connect: () => connect(),
   disconnect: () => disconnect(),
@@ -789,25 +806,36 @@ const handlers = {
         ? 'That proxy type can\'t be used in Chrome (only HTTP and SOCKS5 work).'
         : 'No proxy found. Paste a curl / Python / Node.js example, a proxy URL like http://user:pass@1.2.3.4:6014, or lines like ip:port:user:pass.');
     }
-    const old = replace ? [] : await getCustomServers();
+    const old = replace ? [] : await getUserServers('custom');
     const merged = [...new Map([...old, ...servers].map((x) => [x.id, x])).values()];
     await set({ customServers: merged });
-    const st = await testCustom();
+    const st = await testUser('custom');
     const prefs = await getPrefs();
     if (st.working && prefs.source !== 'custom') await handlers.setPrefs({ patch: { source: 'custom', selected: 'auto' } });
     return { ...st, added: servers.length };
   },
-  customTest: () => testCustom(),
-  async customRemove({ id }) {
-    const left = id ? (await getCustomServers()).filter((x) => x.id !== id) : [];
-    await set({ customServers: left });
-    if (!left.length) {
-      await chrome.storage.local.remove('customStatus');
-      const prefs = await getPrefs();
-      if (prefs.source === 'custom') await handlers.setPrefs({ patch: { source: 'free', selected: 'auto' } });
+  customTest: () => testUser('custom'),
+  customRemove: ({ id }) => removeUserServer('custom', id),
+  async listSave({ text, proto, fileName }) {
+    const { servers, bad } = parseProxyListFile(text, proto === 'socks5' ? 'socks5' : 'http');
+    if (!servers.length) {
+      throw new Error('No proxies found in this file. Each line should look like ip:port:username:password (or ip:port).');
     }
-    return true;
+    await set({ listServers: servers, listInfo: { fileName: fileName || 'Proxy list', proto, count: servers.length, bad, at: Date.now() } });
+    const st = await testUser('list');
+    const prefs = await getPrefs();
+    if (st.working && prefs.source !== 'list') await handlers.setPrefs({ patch: { source: 'list', selected: 'auto' } });
+    return { ...st, added: servers.length, bad };
   },
+  listTest: () => testUser('list'),
+  async listSetProto({ proto }) {
+    const mine = await getUserServers('list');
+    if (!mine.length) return true;
+    const text = mine.map((x) => [x.address, x.port, x.username, x.password].filter((v, i) => i < 2 || x.username).join(':')).join('\n');
+    const info = (await get('listInfo')).listInfo || {};
+    return handlers.listSave({ text, proto, fileName: info.fileName });
+  },
+  listRemove: ({ id }) => removeUserServer('list', id),
   async proxioRemove() {
     await chrome.storage.local.remove(['proxio', 'proxioServers', 'proxioStatus']);
     const prefs = await getPrefs();
@@ -817,7 +845,7 @@ const handlers = {
   async test() {
     const prefs = await getPrefs();
     if (prefs.source === 'proxio') return refreshProxio();
-    if (prefs.source === 'custom') return testCustom();
+    if (USER_KINDS.includes(prefs.source)) return testUser(prefs.source);
     if (prefs.source === 'both') await refreshProxio().catch(() => {});
     return testAll();
   },

@@ -157,7 +157,26 @@
           <option value="proxio">Proxio.io servers (your API key)</option>
           <option value="both">Proxio.io + free servers</option>
           <option value="custom">My proxies (curl / Python / Node.js)</option>
+          <option value="list">Proxy list file (.txt)</option>
         </select>
+
+        <div class="card list-card">
+          <div class="strong">Proxy list file</div>
+          <div class="muted tiny">Import a .txt list from Webshare or another provider — one proxy per line, like <code>ip:port:username:password</code>.</div>
+          <div class="row gap">
+            <select id="list-proto" class="grow" title="Proxy type in the file">
+              <option value="http">HTTP proxies</option>
+              <option value="socks5">SOCKS5 proxies</option>
+            </select>
+            <label class="btn primary grow file-btn" id="list-pick">Choose .txt file<input id="list-file" type="file" accept=".txt,.csv,.list,text/plain"></label>
+          </div>
+          <div id="list-status" class="muted tiny"></div>
+          <div id="list-rows" class="list"></div>
+          <div id="list-actions" class="row gap hidden">
+            <button id="list-test" class="btn grow">Test again</button>
+            <button id="list-remove" class="btn danger grow">Remove all</button>
+          </div>
+        </div>
 
         <div class="card custom-card">
           <div class="strong">My proxies</div>

@@ -46,6 +46,20 @@ Tervyn finds the proxies, tests them, and switches **Server source** to *My prox
 
 Chrome can't log in to password-protected **SOCKS5** proxies. Use the HTTP version of your proxy (providers usually offer both). Your proxies and their logins are stored only in your browser.
 
+## Optional: Proxy list file (.txt)
+
+Downloaded a proxy list from Webshare or another provider? Open **Settings → Proxy list file**, choose **HTTP** or **SOCKS5**, and press **Choose .txt file**. One proxy per line, in any of these layouts:
+
+```
+45.0.0.1:6014:username:password      (Webshare download format)
+username:password:45.0.0.1:6014
+username:password@45.0.0.1:6014
+45.0.0.1:6014
+socks5://username:password@45.0.0.1:1080
+```
+
+Tervyn imports every proxy, tests them all, and switches **Server source** to *Proxy list file*. Auto mode uses the fastest working proxies from the file and fails over between them. This list is kept separately from *My proxies*. If you switch HTTP/SOCKS5 later, the same list is re-tested as the new type. In the small popup, the file button opens Tervyn in a full tab, because some systems close popups when a file picker opens.
+
 ## Optional: Proxio.io servers (your API key)
 
 If you have a [Proxio.io](https://proxio.io) account, Tervyn can use its servers instead of (or together with) the free ones:
