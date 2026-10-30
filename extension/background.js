@@ -654,7 +654,6 @@ async function disconnect() {
 async function refreshProxyIfOn() {
   const prefs = await getPrefs();
   if (!prefs.enabled) return;
-  if (prefs.mode === 'targeted' && !prefs.sites.length) return;
   const { activeProxy } = await get('activeProxy');
   if (activeProxy) await applyPac(prefs, activeProxy);
   await updateBadge();
