@@ -91,7 +91,13 @@
           <div id="home-sites" class="home-sites"></div>
         </div>
 
-        <label class="label">Current server</label>
+        <div class="label label-row">
+          <span>Current server</span>
+          <label class="switch-wrap" title="On: always use the fastest server and switch automatically. Off: stay on the selected server.">
+            <span id="auto-switch-text">Auto-switch</span>
+            <span class="switch"><input type="checkbox" id="auto-switch"><i></i></span>
+          </label>
+        </div>
         <button id="server-pick" class="card row server-card">
           <span id="server-flag" class="flag-badge">⚡</span>
           <span class="grow left">

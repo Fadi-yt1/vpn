@@ -67,7 +67,8 @@ function render() {
 
   // the server in use (when on) or the chosen one
   const activeId = on ? status.servers?.[0] : (prefs.selected !== 'auto' ? prefs.selected : null);
-  const active = activeId ? servers.find((s) => s.id === activeId) : null;
+  const active = activeId ? (servers.find((s) => s.id === activeId) || (prefs.pinned?.id === activeId ? prefs.pinned : null)) : null;
+  const autoSw = prefs.selected === 'auto';
   const place = active && active.country !== 'Unknown' ? active.country : '';
 
   $('.power-wrap').classList.toggle('on', on && !connecting);
@@ -125,12 +126,19 @@ function render() {
   else badge.innerHTML = '<svg class="bolt"><use href="#i-bolt"/></svg>';
   $('#server-name').textContent = active ? (place ? `${place}` : active.name) : 'Fastest available';
   $('#server-sub').textContent = active
-    ? (on ? sp.text : serverSub(active))
+    ? (!autoSw ? 'Fixed server • stays put' : on ? sp.text : serverSub(active))
     : `Auto · picks the fastest ${prefs.source === 'proxio' ? 'Proxio.io ' : ['custom', 'list'].includes(prefs.source) ? 'of your ' : prefs.source === 'both' ? '' : 'free '}${['custom', 'list'].includes(prefs.source) ? 'proxies' : 'server'}${prefs.country ? ' in ' + prefs.country : ''}`;
   const sig = $('#server-ping');
   sig.classList.toggle('hidden', !(active && ms != null));
   sig.className = `signal ${sp.cls}${active && ms != null ? '' : ' hidden'}`;
   sig.querySelector('.ms').textContent = ms != null ? `${ms} ms` : '';
+
+  // Auto-switch toggle
+  if (document.activeElement !== $('#auto-switch')) $('#auto-switch').checked = autoSw;
+  $('.switch-wrap').classList.toggle('on', autoSw);
+  $('.switch-wrap').title = autoSw
+    ? 'On: Tervyn uses the fastest servers and switches automatically. Turn off to stay on the current server.'
+    : 'Off: Tervyn stays on the selected server. Turn on to always use the fastest servers.';
 
   // Footer
   $('#check-ip').classList.toggle('on', on);
@@ -406,6 +414,7 @@ $('#home-sites').addEventListener('click', async (e) => {
 
 $('#server-pick').addEventListener('click', () => showTab('servers'));
 $('#manage-sites').addEventListener('click', () => showTab('sites'));
+$('#auto-switch').addEventListener('change', (e) => savePref({ autoSwitch: e.target.checked }));
 
 $('#check-ip').addEventListener('click', async () => {
   ipText = 'Checking your IP…'; render();

@@ -14,6 +14,8 @@ const DEFAULT_PREFS = {
   enabled: false,
   mode: 'full',            // 'full' = all sites, 'targeted' = only listed sites
   selected: 'auto',        // 'auto' or a server id
+  autoSwitch: true,        // true = always use the fastest servers and switch automatically
+  pinned: null,            // copy of the chosen server when auto-switch is off
   sites: [],
   socksPort: 10808,
   httpPort: 10809,
@@ -30,7 +32,9 @@ async function set(obj) { return chrome.storage.local.set(obj); }
 
 async function getPrefs() {
   const { prefs } = await get('prefs');
-  return { ...DEFAULT_PREFS, ...(prefs || {}) };
+  const p = { ...DEFAULT_PREFS, ...(prefs || {}) };
+  p.autoSwitch = p.selected === 'auto'; // one source of truth: the selection
+  return p;
 }
 async function savePrefs(patch) {
   const prefs = { ...(await getPrefs()), ...patch };
@@ -117,7 +121,7 @@ async function removeSource(id) {
   });
   const prefs = await getPrefs();
   if (prefs.selected !== 'auto' && !(await getAllServers()).some((s) => s.id === prefs.selected)) {
-    await savePrefs({ selected: 'auto' });
+    await handlers.setPrefs({ patch: { selected: 'auto' } });
   }
 }
 
@@ -310,6 +314,11 @@ async function healthCheck() {
     await set({ pings });
     if (refreshing || connecting) return;
     const dead = inUse.filter((s) => !res[s.id]);
+    if (prefs.selected !== 'auto') {
+      // Auto-switch off: never change servers on our own, just tell the user.
+      await setStatus({ warning: dead.length ? 'Your chosen server isn\'t answering. Pick another server or turn on Auto-switch.' : '' });
+      return;
+    }
     if (dead.length) {
       const alive = (s) => !dead.some((d) => d.id === s.id);
       await set({ freeServers: (await getFreeServers()).filter(alive), proxioServers: (await getProxioServers()).filter(alive) });
@@ -412,6 +421,9 @@ async function testUser(kind) {
 }
 
 async function removeUserServer(kind, id) {
+  const before = await getPrefs();
+  const removed = (await getUserServers(kind)).filter((x) => !id || x.id === id).map((x) => x.id);
+  if (removed.includes(before.selected)) await handlers.setPrefs({ patch: { selected: 'auto' } });
   const left = id ? (await getUserServers(kind)).filter((x) => x.id !== id) : [];
   await set({ [`${kind}Servers`]: left });
   if (!left.length) {
@@ -484,8 +496,10 @@ async function helperOk() {
 async function pickServers(prefs) {
   const all = await getAllServers();
   if (prefs.selected !== 'auto') {
-    const s = all.find((x) => x.id === prefs.selected);
+    // Auto-switch off: stay on the chosen server, even if it left the free list.
+    const s = all.find((x) => x.id === prefs.selected) || (prefs.pinned?.id === prefs.selected ? prefs.pinned : null);
     if (s) return { servers: [s], core: s.kind === 'core' };
+    if (!prefs.autoSwitch) throw new Error('Your chosen server is no longer available. Pick another server or turn on Auto-switch.');
   }
   const pings = await getPings();
   const inCountry = (list) => {
@@ -776,10 +790,37 @@ const handlers = {
   disconnect: () => disconnect(),
   async setPrefs({ patch }) {
     const before = await getPrefs();
+    patch = { ...patch };
+    if ('autoSwitch' in patch && !('selected' in patch)) {
+      if (patch.autoSwitch) patch.selected = 'auto';
+      else {
+        // Turning auto-switch off: stay on the server in use (or the fastest one now).
+        const status = await getStatus();
+        const all = await getAllServers();
+        let s = before.enabled && status.state === 'on' ? all.find((x) => x.id === status.servers?.[0]) : null;
+        if (!s) s = (await pickServers({ ...before, selected: 'auto', autoSwitch: true }).catch(() => ({ servers: [] }))).servers[0];
+        if (!s) throw new Error('No working server to stay on yet. Connect once first, or pick a server in the Servers tab.');
+        patch.selected = s.id;
+      }
+    }
+    if ('selected' in patch) {
+      if (patch.selected === 'auto') Object.assign(patch, { autoSwitch: true, pinned: null });
+      else {
+        const s = (await getAllServers()).find((x) => x.id === patch.selected);
+        Object.assign(patch, { autoSwitch: false, pinned: s || before.pinned });
+      }
+    }
+    // Changing source or country while pinned: go back to auto so the change takes effect.
+    if (('source' in patch && patch.source !== before.source) || ('country' in patch && patch.country !== before.country)) {
+      if (!('selected' in patch) && before.selected !== 'auto') Object.assign(patch, { selected: 'auto', autoSwitch: true, pinned: null });
+    }
     const prefs = await savePrefs(patch);
-    const needsReconnect = prefs.enabled && ['selected', 'country', 'autoPool', 'socksPort', 'httpPort', 'manualCore', 'source']
+    const needsReconnect = prefs.enabled && ['selected', 'country', 'autoPool', 'socksPort', 'httpPort', 'manualCore', 'source', 'autoSwitch']
       .some((k) => k in patch && patch[k] !== before[k]);
-    if (needsReconnect) await connect();
+    if (needsReconnect) {
+      await setStatus({ warning: '' }); // old warnings were about the previous server
+      await connect();
+    }
     else if ('mode' in patch || 'bypass' in patch) await refreshProxyIfOn();
     return prefs;
   },
